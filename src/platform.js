@@ -14,58 +14,14 @@
  * limitations under the License.
  */
 
-import {getService} from './service';
-
-
-/**
- * A helper class that provides information about device/OS/browser currently
- * running.
- */
-export class Platform {
-
-  /**
-   * @param {!Window} win
-   */
-  constructor(win) {
-    /** @const {!Window} */
-    this.win = win;
-  }
-
-  /**
-   * Whether the current platform an iOS device.
-   * @return {boolean}
-   */
-  isIos() {
-    return /iPhone|iPad|iPod/i.test(this.win.navigator.userAgent);
-  }
-
-  /**
-   * Whether the current browser is Safari.
-   * @return {boolean}
-   */
-  isSafari() {
-    return /Safari/i.test(this.win.navigator.userAgent) && !this.isChrome();
-  }
-
-  /**
-   * Whether the current browser a Chrome browser.
-   * @return {boolean}
-   */
-  isChrome() {
-    // Also true for MS Edge :)
-    return /Chrome|CriOS/i.test(this.win.navigator.userAgent);
-  }
-};
+import {getExistingServiceForWindow} from './service';
 
 
 /**
  * @param {!Window} window
- * @return {!Platform}
+ * @return {!./service/platform-impl.Platform}
  */
 export function platformFor(window) {
-  return getService(window, 'platform', () => {
-    return new Platform(window);
-  });
+  return /** @type {!./service/platform-impl.Platform} */ (
+      getExistingServiceForWindow(window, 'platform'));
 };
-
-export const platform = platformFor(window);

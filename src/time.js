@@ -19,7 +19,7 @@
  * Absolute time in milliseconds.
  * @typedef {number}
  */
-class time {};
+export let timeDef;
 
 
 /**
@@ -27,4 +27,4 @@ class time {};
  * end".
  * @typedef {number}
  */
-class normtime {};
+export let normtimeDef;

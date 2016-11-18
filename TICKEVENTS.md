@@ -22,6 +22,14 @@ Every start label has an assumed e_`label` for its "end" counterpart label.
 As an example if we executed `perf.tick('label')` we assume we have a counterpart
 `perf.tick('e_label')`.
 
-| Name                | Tick Label        | Description                        |
+| Name                | id                | Description                        |
 ----------------------|-------------------|------------------------------------|
-| installStyles       | `is`              | Set when the styles are installed. |
+| Install Styles      | `is`              | Set when the styles are installed. |
+| End Install Styles  | `e_is`            | Set when the styles are done installing. |
+| Window load event   | `ol`              | Window load event fired.           |
+| Prerender Complete  | `pc`              | The runtime completes prerending a single document. |
+| Frames per second   | `fps`             | Tick to measure fps.               |
+| Frames per second during ad load | `fal`| Tick to measure fps when at least one ad is on the page. |
+| First Viewport Complete | `fc`          | The first viewport is finished rendering. |
+| Make Body Visible | `mbv` | Make Body Visible Executes. |
+| On First Visible | `ofv` | The first time the page has been turned visible. |

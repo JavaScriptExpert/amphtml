@@ -14,43 +14,72 @@
  * limitations under the License.
  */
 
-import {createIframePromise} from '../../../../testing/iframe';
-require('../amp-youtube');
+import {
+  createIframePromise,
+  doNotLoadExternalResourcesInTest,
+} from '../../../../testing/iframe';
+import '../amp-youtube';
 import {adopt} from '../../../../src/runtime';
+import {timerFor} from '../../../../src/timer';
+import * as sinon from 'sinon';
 
 adopt(window);
 
-describe('amp-youtube', () => {
+describe('amp-youtube', function() {
+  this.timeout(5000);
+  let sandbox;
+  const timer = timerFor(window);
 
-  function getYt(videoId, opt_responsive) {
-    return createIframePromise().then(iframe => {
-      const yt = iframe.doc.createElement('amp-youtube');
-      yt.setAttribute('data-videoid', videoId);
-      yt.setAttribute('width', '111');
-      yt.setAttribute('height', '222');
-      if (opt_responsive) {
-        yt.setAttribute('layout', 'responsive');
-      }
-      iframe.doc.body.appendChild(yt);
-      yt.implementation_.layoutCallback();
-      return yt;
-    });
+  beforeEach(() => {
+    sandbox = sinon.sandbox.create();
+  });
+
+  afterEach(() => {
+    sandbox.restore();
+  });
+
+  function getYt(attributes, opt_responsive, opt_beforeLayoutCallback) {
+    return createIframePromise(
+        true, opt_beforeLayoutCallback).then(iframe => {
+          doNotLoadExternalResourcesInTest(iframe.win);
+          const yt = iframe.doc.createElement('amp-youtube');
+
+          // TODO(mkhatib): During tests, messages are not being correctly
+          // caught and hence the ready promise will never resolve.
+          // For now, this resolves the ready promise after a while.
+          timer.promise(50).then(() => {
+            const ytIframe = yt.querySelector('iframe');
+            yt.implementation_.handleYoutubeMessages_({
+              origin: 'https://www.youtube.com',
+              source: ytIframe.contentWindow,
+              data: JSON.stringify({event: 'onReady'}),
+            });
+          });
+
+          for (const key in attributes) {
+            yt.setAttribute(key, attributes[key]);
+          }
+          yt.setAttribute('width', '111');
+          yt.setAttribute('height', '222');
+          if (opt_responsive) {
+            yt.setAttribute('layout', 'responsive');
+          }
+          return iframe.addElement(yt);
+        });
   }
 
   it('renders', () => {
-    return getYt('mGENRKrdoGY').then(yt => {
+    return getYt({'data-videoid': 'mGENRKrdoGY'}).then(yt => {
       const iframe = yt.querySelector('iframe');
       expect(iframe).to.not.be.null;
       expect(iframe.tagName).to.equal('IFRAME');
       expect(iframe.src).to.equal(
-          'https://www.youtube.com/embed/mGENRKrdoGY?enablejsapi=1');
-      expect(iframe.getAttribute('width')).to.equal('111');
-      expect(iframe.getAttribute('height')).to.equal('222');
+          'https://www.youtube.com/embed/mGENRKrdoGY?enablejsapi=1&playsinline=1');
     });
   });
 
   it('renders responsively', () => {
-    return getYt('mGENRKrdoGY', true).then(yt => {
+    return getYt({'data-videoid': 'mGENRKrdoGY'}, true).then(yt => {
       const iframe = yt.querySelector('iframe');
       expect(iframe).to.not.be.null;
       expect(iframe.className).to.match(/-amp-fill-content/);
@@ -58,7 +87,164 @@ describe('amp-youtube', () => {
   });
 
   it('requires data-videoid', () => {
-    return getYt('').should.eventually.be.rejectedWith(
+    return getYt({}).should.eventually.be.rejectedWith(
         /The data-videoid attribute is required for/);
   });
+
+  it('adds an img placeholder in prerender mode', () => {
+    return getYt({'data-videoid': 'mGENRKrdoGY'}, true, function(yt) {
+      const iframe = yt.querySelector('iframe');
+      expect(iframe).to.be.null;
+
+      const imgPlaceholder = yt.querySelector('img[placeholder]');
+      expect(imgPlaceholder).to.not.be.null;
+      expect(imgPlaceholder.className).to.not.match(/amp-hidden/);
+      expect(imgPlaceholder.src).to.be.equal(
+          'https://i.ytimg.com/vi/mGENRKrdoGY/sddefault.jpg#404_is_fine');
+      expect(imgPlaceholder.getAttribute('referrerpolicy')).to.equal('origin');
+    }).then(yt => {
+      const iframe = yt.querySelector('iframe');
+      expect(iframe).to.not.be.null;
+
+      const imgPlaceholder = yt.querySelector('img[placeholder]');
+      expect(imgPlaceholder.className).to.match(/amp-hidden/);
+    });
+  });
+
+  it('loads only sddefault when it exists', () => {
+    return getYt({'data-videoid': 'mGENRKrdoGY'}, true, function(yt) {
+      const iframe = yt.querySelector('iframe');
+      expect(iframe).to.be.null;
+
+      const imgPlaceholder = yt.querySelector('img[placeholder]');
+      expect(imgPlaceholder).to.not.be.null;
+      expect(imgPlaceholder.className).to.not.match(/amp-hidden/);
+      expect(imgPlaceholder.getAttribute('referrerpolicy')).to.equal('origin');
+    }).then(yt => {
+      const iframe = yt.querySelector('iframe');
+      expect(iframe).to.not.be.null;
+
+      const imgPlaceholder = yt.querySelector('img[placeholder]');
+      expect(imgPlaceholder.className).to.match(/amp-hidden/);
+      expect(imgPlaceholder.getAttribute('referrerpolicy')).to.equal('origin');
+
+      expect(imgPlaceholder.src).to.equal(
+          'https://i.ytimg.com/vi/mGENRKrdoGY/sddefault.jpg#404_is_fine');
+    });
+  });
+
+  it('loads hqdefault thumbnail source when sddefault fails', () => {
+    return getYt({'data-videoid': 'FAKE'}, true, function(yt) {
+      const iframe = yt.querySelector('iframe');
+      expect(iframe).to.be.null;
+
+      const imgPlaceholder = yt.querySelector('img[placeholder]');
+      expect(imgPlaceholder).to.not.be.null;
+      expect(imgPlaceholder.className).to.not.match(/amp-hidden/);
+
+      // Fake out the 404 image response dimensions of YT.
+      Object.defineProperty(imgPlaceholder, 'naturalWidth', {
+        get: function() {
+          return 120;
+        },
+      });
+      Object.defineProperty(imgPlaceholder, 'naturalHeight', {
+        get: function() {
+          return 90;
+        },
+      });
+      imgPlaceholder.triggerLoad();
+    }).then(yt => {
+      const iframe = yt.querySelector('iframe');
+      expect(iframe).to.not.be.null;
+
+      const imgPlaceholder = yt.querySelector('img[placeholder]');
+      expect(imgPlaceholder.className).to.match(/amp-hidden/);
+
+      expect(imgPlaceholder.src).to.equal(
+          'https://i.ytimg.com/vi/FAKE/hqdefault.jpg');
+    });
+  });
+
+  it('monitors the YouTube player state', () => {
+    return getYt({'data-videoid': 'mGENRKrdoGY'}).then(yt => {
+      const iframe = yt.querySelector('iframe');
+      expect(iframe).to.not.be.null;
+
+      expect(yt.implementation_.playerState_).to.equal(0);
+
+      yt.implementation_.handleYoutubeMessages_({
+        origin: 'https://www.youtube.com',
+        source: iframe.contentWindow,
+        data: JSON.stringify({
+          event: 'infoDelivery',
+          info: {playerState: 1},
+        }),
+      });
+
+      expect(yt.implementation_.playerState_).to.equal(1);
+
+      // YouTube Player sometimes sends parsed-JSON data. Test that we're
+      // handling it correctly.
+      yt.implementation_.handleYoutubeMessages_({
+        origin: 'https://www.youtube.com',
+        source: iframe.contentWindow,
+        data: {
+          event: 'infoDelivery',
+          info: {playerState: 2},
+        },
+      });
+
+      expect(yt.implementation_.playerState_).to.equal(2);
+    });
+
+  });
+
+  it('should not pause when video not playing', () => {
+    return getYt({'data-videoid': 'mGENRKrdoGY'}).then(yt => {
+      sandbox.spy(yt.implementation_, 'pause');
+      yt.implementation_.pauseCallback();
+      expect(yt.implementation_.pause.called).to.be.false;
+    });
+
+  });
+
+  it('should pause if the video is playing', () => {
+    return getYt({'data-videoid': 'mGENRKrdoGY'}).then(yt => {
+      yt.implementation_.playerState_ = 1;
+      sandbox.spy(yt.implementation_, 'pause');
+      yt.implementation_.pauseCallback();
+      expect(yt.implementation_.pause.called).to.be.true;
+    });
+  });
+
+  it('should pass data-param-* attributes to the iframe src', () => {
+    return getYt({
+      'data-videoid': 'mGENRKrdoGY',
+      'data-param-autoplay': '1',
+      'data-param-my-param': 'hello world',
+    }).then(yt => {
+      const iframe = yt.querySelector('iframe');
+      expect(iframe.src).to.contain('myParam=hello%20world');
+      // data-param-autoplay is black listed in favour of just autoplay
+      expect(iframe.src).to.not.contain('autoplay=1');
+      // playsinline should default to 1 if not provided.
+      expect(iframe.src).to.contain('playsinline=1');
+    });
+  });
+
+  it('should change defaults for some data-param-* when autoplaying', () => {
+    return getYt({
+      'autoplay': '',
+      'data-videoid': 'mGENRKrdoGY',
+      'data-param-playsinline': '0',
+    }).then(yt => {
+      const iframe = yt.querySelector('iframe');
+      // playsinline must be set 1 even if specified as 0
+      expect(iframe.src).to.contain('playsinline=1');
+      // annotation policy should default to 3 if not specified.
+      expect(iframe.src).to.contain('iv_load_policy=3');
+    });
+  });
+
 });

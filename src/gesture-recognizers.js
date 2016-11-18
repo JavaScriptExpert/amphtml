@@ -15,9 +15,7 @@
  */
 
 import {GestureRecognizer} from './gesture';
-import {assert} from './asserts';
 import {calcVelocity} from './motion';
-import {timer} from './timer';
 
 
 /**
@@ -27,16 +25,16 @@ import {timer} from './timer';
  *   clientY: number
  * }}
  */
-let Tap;
+let TapDef;
 
 
 /**
  * Recognizes "tap" gestures.
- * @extends {GestureRecognizer<Tap>}
+ * @extends {GestureRecognizer<TapDef>}
  */
 export class TapRecognizer extends GestureRecognizer {
   /**
-   * @param {!Gestures} manager
+   * @param {!./gesture.Gestures} manager
    */
   constructor(manager) {
     super('tap', manager);
@@ -81,7 +79,7 @@ export class TapRecognizer extends GestureRecognizer {
   }
 
   /** @override */
-  onTouchEnd(e) {
+  onTouchEnd(unusedE) {
     this.signalReady(0);
   }
 
@@ -101,17 +99,17 @@ export class TapRecognizer extends GestureRecognizer {
  *   clientY: number
  * }}
  */
-let Doubletap;
+let DoubletapDef;
 
 
 /**
  * Recognizes a "doubletap" gesture. This gesture will block a single "tap"
  * for about 300ms while it's expecting the second "tap".
- * @extends {GestureRecognizer<Doubletap>}
+ * @extends {GestureRecognizer<DoubletapDef>}
  */
 export class DoubletapRecognizer extends GestureRecognizer {
   /**
-   * @param {!Gestures} manager
+   * @param {!./gesture.Gestures} manager
    */
   constructor(manager) {
     super('doubletap', manager);
@@ -163,7 +161,7 @@ export class DoubletapRecognizer extends GestureRecognizer {
   }
 
   /** @override */
-  onTouchEnd(e) {
+  onTouchEnd(unusedE) {
     this.tapCount_++;
     if (this.tapCount_ < 2) {
       this.signalPending(300);
@@ -199,17 +197,17 @@ export class DoubletapRecognizer extends GestureRecognizer {
  *   velocityY: number
  * }}
  */
-let Swipe;
+export let SwipeDef;
 
 
 /**
  * Recognizes swipe gestures. This gesture will yield about 10ms to other
  * gestures.
- * @extends {GestureRecognizer<Swipe>}
+ * @extends {GestureRecognizer<SwipeDef>}
  */
 class SwipeRecognizer extends GestureRecognizer {
   /**
-   * @param {!Gestures} manager
+   * @param {!./gesture.Gestures} manager
    */
   constructor(type, manager, horiz, vert) {
     super(type, manager);
@@ -263,7 +261,7 @@ class SwipeRecognizer extends GestureRecognizer {
     if (!touches || touches.length != 1) {
       return false;
     }
-    this.startTime_ = timer.now();
+    this.startTime_ = Date.now();
     this.startX_ = touches[0].clientX;
     this.startY_ = touches[0].clientY;
     return true;
@@ -339,7 +337,7 @@ class SwipeRecognizer extends GestureRecognizer {
    * @private
    */
   emit_(first, last, event) {
-    this.lastTime_ = timer.now();
+    this.lastTime_ = Date.now();
     const deltaTime = this.lastTime_ - this.prevTime_;
     // It's often that `touchend` arrives on the next frame. These should
     // be ignored to avoid a significant velocity downgrade.
@@ -356,13 +354,13 @@ class SwipeRecognizer extends GestureRecognizer {
     }
 
     this.signalEmit({
-      first: first,
-      last: last,
+      first,
+      last,
       time: this.lastTime_,
       deltaX: this.horiz_ ? this.lastX_ - this.startX_ : 0,
       deltaY: this.vert_ ? this.lastY_ - this.startY_ : 0,
       velocityX: this.horiz_ ? this.velocityX_ : 0,
-      velocityY: this.vert_ ? this.velocityY_ : 0
+      velocityY: this.vert_ ? this.velocityY_ : 0,
     }, event);
   }
 
@@ -385,7 +383,7 @@ class SwipeRecognizer extends GestureRecognizer {
  */
 export class SwipeXYRecognizer extends SwipeRecognizer {
   /**
-   * @param {!Gestures} manager
+   * @param {!./gesture.Gestures} manager
    */
   constructor(manager) {
     super('swipe-xy', manager, true, true);
@@ -398,7 +396,7 @@ export class SwipeXYRecognizer extends SwipeRecognizer {
  */
 export class SwipeXRecognizer extends SwipeRecognizer {
   /**
-   * @param {!Gestures} manager
+   * @param {!./gesture.Gestures} manager
    */
   constructor(manager) {
     super('swipe-x', manager, true, false);
@@ -411,7 +409,7 @@ export class SwipeXRecognizer extends SwipeRecognizer {
  */
 export class SwipeYRecognizer extends SwipeRecognizer {
   /**
-   * @param {!Gestures} manager
+   * @param {!./gesture.Gestures} manager
    */
   constructor(manager) {
     super('swipe-y', manager, false, true);
@@ -434,17 +432,17 @@ export class SwipeYRecognizer extends SwipeRecognizer {
  *   velocityY: number
  * }}
  */
-let Tapzoom;
+let TapzoomDef;
 
 
 /**
  * Recognizes a "tapzoom" gesture. This gesture will block other gestures
  * for about 400ms after first "tap" while it's expecting swipe.
- * @extends {GestureRecognizer<Tapzoom>}
+ * @extends {GestureRecognizer<TapzoomDef>}
  */
 export class TapzoomRecognizer extends GestureRecognizer {
   /**
-   * @param {!Gestures} manager
+   * @param {!./gesture.Gestures} manager
    */
   constructor(manager) {
     super('tapzoom', manager);
@@ -571,7 +569,7 @@ export class TapzoomRecognizer extends GestureRecognizer {
    * @private
    */
   emit_(first, last, event) {
-    this.lastTime_ = timer.now();
+    this.lastTime_ = Date.now();
     if (first) {
       this.startTime_ = this.lastTime_;
       this.velocityX_ = this.velocityY_ = 0;
@@ -586,14 +584,14 @@ export class TapzoomRecognizer extends GestureRecognizer {
     this.prevTime_ = this.lastTime_;
 
     this.signalEmit({
-      first: first,
-      last: last,
+      first,
+      last,
       centerClientX: this.startX_,
       centerClientY: this.startY_,
       deltaX: this.lastX_ - this.startX_,
       deltaY: this.lastY_ - this.startY_,
       velocityX: this.velocityX_,
-      velocityY: this.velocityY_
+      velocityY: this.velocityY_,
     }, event);
   }
 
@@ -628,16 +626,16 @@ export class TapzoomRecognizer extends GestureRecognizer {
  *   velocityY: number
  * }}
  */
-let Pinch;
+let PinchDef;
 
 
 /**
  * Recognizes a "pinch" gesture.
- * @extends {GestureRecognizer<Pinch>}
+ * @extends {GestureRecognizer<PinchDef>}
  */
 export class PinchRecognizer extends GestureRecognizer {
   /**
-   * @param {!Gestures} manager
+   * @param {!./gesture.Gestures} manager
    */
   constructor(manager) {
     super('pinch', manager);
@@ -694,7 +692,7 @@ export class PinchRecognizer extends GestureRecognizer {
     if (!touches || touches.length != 2) {
       return false;
     }
-    this.startTime_ = timer.now();
+    this.startTime_ = Date.now();
     this.startX1_ = touches[0].clientX;
     this.startY1_ = touches[0].clientY;
     this.startX2_ = touches[1].clientX;
@@ -760,7 +758,7 @@ export class PinchRecognizer extends GestureRecognizer {
    * @private
    */
   emit_(first, last, event) {
-    this.lastTime_ = timer.now();
+    this.lastTime_ = Date.now();
     const deltaTime = this.lastTime_ - this.prevTime_;
     const deltaX = this.deltaX_();
     const deltaY = this.deltaY_();
@@ -783,8 +781,8 @@ export class PinchRecognizer extends GestureRecognizer {
     const lastSq = this.sqDist_(this.lastX1_, this.lastX2_,
         this.lastY1_, this.lastY2_);
     this.signalEmit({
-      first: first,
-      last: last,
+      first,
+      last,
       time: this.lastTime_,
       centerClientX: this.centerClientX_,
       centerClientY: this.centerClientY_,
@@ -792,7 +790,7 @@ export class PinchRecognizer extends GestureRecognizer {
       deltaX: deltaX * 0.5,
       deltaY: deltaY * 0.5,
       velocityX: this.velocityX_ * 0.5,
-      velocityY: this.velocityY_ * 0.5
+      velocityY: this.velocityY_ * 0.5,
     }, event);
   }
 

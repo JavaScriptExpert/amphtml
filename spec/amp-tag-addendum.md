@@ -91,9 +91,9 @@ Below we list the allowed tags in the order in which they are appear in the HTML
 4.5.27 `<bdo>`  
 4.5.28 `<span>`  
 4.5.29 `<br>`  
-4.5.30 `<wb>`  
+4.5.30 `<wbr>`  
 ### 4.6 Edits
-4.6.1 `<insert>`  
+4.6.1 `<ins>`  
 4.6.2 `<del>`  
 ### 4.7 Embedded Content
 AMP HTML allows only limited embedded content except via its own tags (ex: amp-img).
@@ -169,10 +169,12 @@ These may be removed in future versions of AMP
 `<amp-video>`  
 `<amp-ad>`  
 `<amp-fit-text>`  
+`<amp-font>`  
 `<amp-carousel>`  
 `<amp-anim>`  
 `<amp-youtube>`  
 `<amp-twitter>`  
+`<amp-vine>`
 `<amp-instagram>`  
 `<amp-iframe>`  
 `<amp-pixel>`  

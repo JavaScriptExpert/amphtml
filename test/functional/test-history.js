@@ -14,9 +14,16 @@
  * limitations under the License.
  */
 
-import {History, HistoryBindingNatural_, HistoryBindingVirtual_} from
-    '../../src/history';
+import {AmpDocSingle} from '../../src/service/ampdoc-impl';
+import {
+  History,
+  HistoryBindingNatural_,
+  HistoryBindingVirtual_,
+  installHistoryServiceForDoc,
+} from '../../src/service/history-impl';
 import {listenOncePromise} from '../../src/event-helper';
+import {installTimerService} from '../../src/service/timer-impl';
+import {parseUrl} from '../../src/url';
 import * as sinon from 'sinon';
 
 
@@ -38,22 +45,17 @@ describe('History', () => {
         onStackIndexUpdated = callback;
       },
       push: () => {},
-      pop(stackIndex) {}
+      pop(unusedStackIndex) {},
     };
     bindingMock = sandbox.mock(binding);
 
-    history = new History(binding);
+    history = new History(new AmpDocSingle(window), binding);
   });
 
   afterEach(() => {
     bindingMock.verify();
-    bindingMock = null;
     history.cleanup_();
-    history = null;
-    clock.restore();
-    clock = null;
     sandbox.restore();
-    sandbox = null;
   });
 
   it('should initialize correctly', () => {
@@ -63,10 +65,10 @@ describe('History', () => {
   });
 
   it('should push new state', () => {
-    const onPop = sinon.spy();
+    const onPop = sandbox.spy();
     bindingMock.expects('push').withExactArgs()
         .returns(Promise.resolve(11)).once();
-    return history.push(onPop).then(historyId => {
+    return history.push(onPop).then(unusedHistoryId => {
       expect(history.stackIndex_).to.equal(11);
       expect(history.stackOnPop_.length).to.equal(12);
       expect(history.stackOnPop_[11]).to.equal(onPop);
@@ -75,7 +77,7 @@ describe('History', () => {
   });
 
   it('should pop previously pushed state', () => {
-    const onPop = sinon.spy();
+    const onPop = sandbox.spy();
     bindingMock.expects('push').withExactArgs()
         .returns(Promise.resolve(11)).once();
     bindingMock.expects('pop').withExactArgs(11)
@@ -95,10 +97,10 @@ describe('History', () => {
   });
 
   it('should return and call callback when history popped', () => {
-    const onPop = sinon.spy();
+    const onPop = sandbox.spy();
     bindingMock.expects('push').withExactArgs()
         .returns(Promise.resolve(11)).once();
-    return history.push(onPop).then(historyId => {
+    return history.push(onPop).then(unusedHistoryId => {
       expect(onPop.callCount).to.equal(0);
       onStackIndexUpdated(10);
       clock.tick(1);
@@ -111,28 +113,69 @@ describe('History', () => {
 });
 
 
-describe('HistoryBindingNatural', () => {
+describes.sandboxed('History install', {}, () => {
+  let win;
+  let ampdoc;
+  let viewer;
 
-  let sandbox;
+  beforeEach(() => {
+    viewer = {
+      isOvertakeHistory: () => false,
+      onHistoryPoppedEvent: () => function() {},
+    };
+
+    win = {
+      services: {
+        'viewer': {obj: viewer},
+        'timer': {obj: installTimerService(window)},
+      },
+      history: {
+        length: 0,
+      },
+      document: {
+        body: {},
+        querySelector: () => null,
+      },
+      location: parseUrl('https://cdn.ampproject.org/c/s/www.example.com/path'),
+      addEventListener: () => null,
+    };
+    ampdoc = new AmpDocSingle(win);
+  });
+
+  it('should create natural binding and make it singleton', () => {
+    const history = installHistoryServiceForDoc(ampdoc);
+    expect(history.binding_).to.be.instanceOf(HistoryBindingNatural_);
+    expect(win.services.history.obj).to.equal(history);
+    // Ensure that binding is installed as a singleton.
+    expect(win.services['global-history-binding'].obj)
+        .to.equal(history.binding_);
+  });
+
+  it('should create virtual binding', () => {
+    viewer.isOvertakeHistory = () => true;
+    const history = installHistoryServiceForDoc(ampdoc);
+    expect(history.binding_).to.be.instanceOf(HistoryBindingVirtual_);
+    expect(win.services.history.obj).to.equal(history);
+    // Ensure that the global singleton has not been created.
+    expect(win.services['global-history-binding']).to.not.exist;
+  });
+});
+
+
+describes.sandboxed('HistoryBindingNatural', {}, () => {
   let clock;
   let onStackIndexUpdated;
   let history;
 
   beforeEach(() => {
-    sandbox = sinon.sandbox.create();
     clock = sandbox.useFakeTimers();
-    onStackIndexUpdated = sinon.spy();
+    onStackIndexUpdated = sandbox.spy();
     history = new HistoryBindingNatural_(window);
     history.setOnStackIndexUpdated(onStackIndexUpdated);
   });
 
   afterEach(() => {
     history.cleanup_();
-    history = null;
-    clock.restore();
-    clock = null;
-    sandbox.restore();
-    sandbox = null;
   });
 
   it('should initialize correctly', () => {
@@ -179,17 +222,22 @@ describe('HistoryBindingNatural', () => {
   // This prevents IE11/Edge from coercing undefined to become the new url
   it('should not pass in `url` argument to original replace state if ' +
     'parameter is undefined', () => {
-    let argumentLength = 0;
-    const origReplace = window.history.replaceState;
-    window.history.replaceState = function() {
-      argumentLength = arguments.length;
+    const replaceStateSpy = sandbox.spy();
+    const windowStub = {
+      history: {
+        replaceState: replaceStateSpy,
+        pushState: () => {},
+        state: {},
+        length: 11,
+      },
+      addEventListener: () => {},
+      setTimeout: window.setTimeout,
+      clearTimeout: window.clearTimeout,
     };
-
-    const history2 = new HistoryBindingNatural_(window);
-
-    expect(argumentLength).to.equal(2);
-
-    window.history.replaceState = origReplace;
+    installTimerService(windowStub);
+    new HistoryBindingNatural_(windowStub);
+    expect(replaceStateSpy.callCount).to.be.greaterThan(0);
+    expect(replaceStateSpy.lastCall.args.length).to.equal(2);
   });
 
   it('should push new state in the window.history and notify', () => {
@@ -213,7 +261,7 @@ describe('HistoryBindingNatural', () => {
         clock.tick(100);
       });
       const popPromise = history.pop(stackIndex);
-      return histPromise.then(hist => {
+      return histPromise.then(unusedHist => {
         return popPromise.then(pop => {
           expect(pop).to.equal(window.history.length - 2);
           expect(history.stackIndex_).to.equal(window.history.length - 2);
@@ -228,7 +276,7 @@ describe('HistoryBindingNatural', () => {
   });
 
   it('should update its state and notify on history.back', () => {
-    return history.push().then(stackIndex => {
+    return history.push().then(unusedStackIndex => {
       expect(onStackIndexUpdated.callCount).to.equal(1);
       expect(onStackIndexUpdated.getCall(0).args[0]).to.equal(
           window.history.length - 1);
@@ -262,15 +310,15 @@ describe('HistoryBindingVirtual', () => {
   beforeEach(() => {
     sandbox = sinon.sandbox.create();
     clock = sandbox.useFakeTimers();
-    onStackIndexUpdated = sinon.spy();
+    onStackIndexUpdated = sandbox.spy();
     viewerHistoryPoppedHandler = undefined;
     const viewer = {
       onHistoryPoppedEvent: handler => {
         viewerHistoryPoppedHandler = handler;
         return () => {};
       },
-      postPushHistory: stackIndex => {},
-      postPopHistory: stackIndex => {}
+      postPushHistory: unusedStackIndex => {},
+      postPopHistory: unusedStackIndex => {},
     };
     viewerMock = sandbox.mock(viewer);
     history = new HistoryBindingVirtual_(viewer);
@@ -279,13 +327,8 @@ describe('HistoryBindingVirtual', () => {
 
   afterEach(() => {
     viewerMock.verify();
-    viewerMock = null;
     history.cleanup_();
-    history = null;
-    clock.restore();
-    clock = null;
     sandbox.restore();
-    sandbox = null;
   });
 
   it('should initialize correctly', () => {

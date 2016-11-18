@@ -14,22 +14,14 @@
  * limitations under the License.
  */
 
-import {getService} from './service';
-import {assert} from './asserts';
-import {parseUrl} from './url';
+import {getExistingServiceForDoc} from './service';
+
 
 /**
- * @param {!Window} win
- * @return {{canonicalUrl: string}} Info about the doc
- *     - canonicalUrl: The doc's canonical.
+ * @param {!Node|!./service/ampdoc-impl.AmpDoc} nodeOrDoc
+ * @return {!./service/document-info-impl.DocumentInfoDef} Info about the doc
  */
-export function documentInfoFor(win) {
-  return getService(win, 'documentInfo', () => {
-    return {
-      canonicalUrl: parseUrl(assert(
-          win.document.querySelector('link[rel=canonical]'),
-              'AMP files are required to have a <link rel=canonical> tag.')
-              .href).href
-    };
-  });
+export function documentInfoForDoc(nodeOrDoc) {
+  return /** @type {!./service/document-info-impl.DocInfo} */ (
+      getExistingServiceForDoc(nodeOrDoc, 'documentInfo')).get();
 }

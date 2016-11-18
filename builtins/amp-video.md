@@ -14,13 +14,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
-### <a name="amp-video"></a> `amp-video`
+# <a name="amp-video"></a> `amp-video`
 
-A replacement for the HTML5 `video` tag. Like all embedded external resources in a AMP file, the video is lazily loaded only when the `amp-video` element is in or near the viewport.
+<table>
+   <tr>
+    <td class="col-fourty"><strong>Description</strong></td>
+    <td>A replacement for the HTML5 <code>video</code> tag; only to be used for direct HTML5 video file embeds.</td>
+  </tr>
+   <tr>
+    <td class="col-fourty"><strong>Availability</strong></td>
+    <td>Stable</td>
+  </tr>
+   <tr>
+    <td class="col-fourty"><strong>Examples</strong></td>
+    <td><a href="https://ampbyexample.com/components/amp-video/">Annotated code example for amp-video</a></td>
+  </tr>
+  <tr>
+    <td class="col-fourty"><strong><a href="https://www.ampproject.org/docs/guides/responsive/control_layout.html">Supported Layouts</a></strong></td>
+    <td>fill, fixed, fixed-height, flex-item, nodisplay, responsive</td>
+  </tr>
+</table>
 
-The `amp-video` component is only to be used for direct HTML5 video file embeds.
-
-#### Behavior
+## Behavior
 
 The `amp-video` component loads the video resource specified by its `src` attribute lazily, at a time determined by the runtime. It can be controlled much the same way as a standard HTML5 `video` tag.
 
@@ -44,11 +59,11 @@ For example:
 </amp-video>
 ```
 
-#### Attributes
+## Attributes
 
 **src**
 
-Required if no <source> children are present. Must be HTTPS.
+Required if no `<source>` children are present. Must be HTTPS.
 
 **poster**
 
@@ -57,9 +72,13 @@ default the first frame is displayed.
 
 **autoplay**
 
-The `autoplay` attribute allows the author to specify when - if ever - the animated image will autoplay.
+If this attribute is present, and the browser supports autoplay:
 
-The presence of the attribute alone implies that the animated image will always autoplay. The author may specify values to limit when the animations will autoplay. Allowable values are `desktop`, `tablet`, or `mobile`, with multiple values separated by a space. The runtime makes a best-guess approximation to the device type to apply this value.
+* the video is automatically muted before autoplay starts
+* when the video is scrolled out of view, the video is paused
+* when the video is scrolled into view, the video resumes playback
+* when the user taps the video, the video is unmuted
+* if the user has interacted with the video (e.g., mutes/unmutes, pauses/resumes, etc.), and the video is scrolled in or out of view, the state of the video remains as how the user left it.  For example, if the user pauses the video, then scrolls the video out of view and returns to the video, the video is still paused. 
 
 **controls**
 
@@ -69,6 +88,11 @@ Similar to the `video` tag `controls` attribute - if present, the browser offers
 
 If present, will automatically loop the video back to the start upon reaching the end.
 
-**muted**
+**muted (deprecated)**
 
-If present, will mute the audio by default.
+`muted` attribute is deprecated and no longer has any effect.
+`autoplay` attribute automatically controls the mute behavior.
+
+## Validation
+
+See [amp-video rules](https://github.com/ampproject/amphtml/blob/master/validator/validator-main.protoascii) in the AMP validator specification.

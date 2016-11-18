@@ -14,15 +14,26 @@
  * limitations under the License.
  */
 
-import {Timer} from '../../src/timer';
-import {createFixtureIframe, poll, expectBodyToBecomeVisible} from
-    '../../testing/iframe.js';
-import {loadPromise} from '../../src/event-helper';
+import {
+  createFixtureIframe,
+  poll,
+  expectBodyToBecomeVisible,
+} from '../../testing/iframe.js';
 
-describe('error page', () => {
+describe.configure().retryOnSaucelabs().run('error page', function() {
+  this.timeout(5000);
   let fixture;
   beforeEach(() => {
-    return createFixtureIframe('test/fixtures/errors.html', 500).then(f => {
+    return createFixtureIframe('test/fixtures/errors.html', 1000, win => {
+      // Trigger dev mode.
+      try {
+        win.history.pushState({}, '', 'test2.html#development=1');
+      } catch (e) {
+        // Some browsers do not allow this.
+        win.AMP_DEV_MODE = true;
+      }
+      console.error('updated', win.location.hash);
+    }).then(f => {
       fixture = f;
       return poll('errors to happen', () => {
         return fixture.doc.querySelectorAll('[error-message]').length >= 2;
@@ -33,13 +44,14 @@ describe('error page', () => {
     });
   });
 
-  it('should show the body', () => {
+  it.configure().skipFirefox().skipEdge()
+  .run('should show the body in error test', () => {
     return expectBodyToBecomeVisible(fixture.win);
   });
 
   function shouldFail(id) {
     // Skip for issue #110
-    it('should fail to load #' + id, () => {
+    it.configure().skipEdge().run('should fail to load #' + id, () => {
       const e = fixture.doc.getElementById(id);
       expect(fixture.errors.join('\n')).to.contain(
           e.getAttribute('data-expectederror'));

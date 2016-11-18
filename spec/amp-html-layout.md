@@ -23,9 +23,10 @@ so that the runtime is able to infer sizing of elements before any remote resour
 JavaScript and data calls, have been completed. This is important since this significantly
 reduces rendering and scrolling jank.
 
-With this in mind the AMP Layout System is designed to support few but flexible layout
+With this in mind the AMP Layout System is designed to support few but flexible layouts
 that provide good performance guarantees. This system relies on a set of attributes such
-as `layout`, `width` and `height` to express the element's layout and sizing needs.
+as `layout`, `width`, `height`, `sizes` and `heights` to express the element's layout and
+sizing needs.
 
 
 ## Layout Types
@@ -36,7 +37,7 @@ to the element's documentation to know which layouts you can use.
 
 ### `nodisplay`
 
-The element is not displayed. This layout can be applied to every AMP element. It assumed
+The element is not displayed. This layout can be applied to every AMP element. It assumes
 that the element can display itself on user action, e.g. `amp-lightbox`.
 
 ### `fixed`
@@ -67,6 +68,8 @@ the layout of a `fill` element matches its parent.
 
 The element lets its children to define its size, much like a normal HTML `div`.
 
+### `flex-item`
+The element and other elements in its parent with layout type `flex-item` take their parent container's remaining space when parent has `display: flex`. 
 
 ## Layout Attributes
 
@@ -87,10 +90,10 @@ The optional layout attribute allows specifying how the component behaves in the
 Valid values for the layout attribute are:
 
 - Not present: The `layout` will be inferred as following:
-  - if `height` is present and `width` is absent or equals to `auto` `fixed-height` layout is assumed;
-  - if `width` or `height` attributes are present along with `sizes` attribute `responsive` layout is assumed;
-  - if `width` or `height` attributes are present `fixed` layout is assumed;
-  - if `width` and `height` are not present `container` layout is assumed
+  - if `height` is present and `width` is absent or equals to `auto`, `fixed-height` layout is assumed;
+  - if `width` and `height` attributes are present along with `sizes` or `heights` attribute, `responsive` layout is assumed;
+  - if `width` and `height` attributes are present, `fixed` layout is assumed;
+  - if `width` and `height` are not present, `container` layout is assumed
 - `fixed`: The `width` and `height` attributes must be present. The only exceptions are `amp-pixel`
 and `amp-audio` elements.
 - `fixed-height`: The `height` attribute must be present. The `width` attribute must not be present
@@ -103,13 +106,15 @@ maintaining the height based on the aspect ratio.
 container. Its children are rendered immediately.
 - `nodisplay`: The component takes up zero space on the screen as if its display style was `none`.
 The `width` and `height` attributes are not required.
+- `flex-item`: Element size will be determined by the parent element and the number of other elements inside parent according to `display:flex` CSS layout.
 
 Each element documents which `layout` values it supported. If an element does not support the
 specified value it would trigger a runtime error.
 
 ### `sizes`
 
-All AMP custom elements support `sizes` attribute. The value of this attribute is a sizes expression
+All AMP custom elements that allow `responsive` layout, also support `sizes` attribute.
+The value of this attribute is a sizes expression
 as described in the [img sizes](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/img), but
 extended to all elements, not just images. In short, `sizes` attribute describes how the width of
 the element is calculated depending on the media conditions.
@@ -117,9 +122,32 @@ the element is calculated depending on the media conditions.
 When `sizes` attribute is specified along with `width` and `height`, the `layout` is defaulted to
 the `responsive`.
 
+### `heights`
+
+All AMP custom elements that allow `responsive` layout, also support the `heights` attribute.
+The value of this attribute is a sizes expression based on media expressions
+as similar to the [img sizes attribute](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/img),
+but with two key differences:
+ 1. It applies to the height and not width of the element.
+ 2. Percent values are allowed, e.g. `86%`. If a percent value is used, it indicates the percent
+ of the element's width.
+
+When the `heights` attribute is specified along with `width` and `height`, the `layout` is defaulted to `responsive`.
+
+An example:
+```
+<amp-img src="https://acme.org/image1.png"
+    width="320" height="256"
+    heights="(min-width:500px) 200px, 80%">
+</amp-img>
+```
+
+In this example, the height of the element by default will be 80% of the width, but for the viewport
+wider than `500px` it will be capped at `200px`.
+
 ### `media`
 
-All AMP custom elements support the `media` attribute. The value of media is a media query. If the query does not match, the element is not rendered at all and it's resources and potentially it's child resources will not be fetched. If the browser window changes size or orientation the media queries are re-evaluated and elements are hidden and shown based on the new results.
+All AMP custom elements support the `media` attribute. The value of media is a media query. If the query does not match, the element is not rendered at all and its resources and potentially its child resources will not be fetched. If the browser window changes size or orientation the media queries are re-evaluated and elements are hidden and shown based on the new results.
 
 Example: Here we have 2 images with mutually exclusive media queries. Depending on the screen width one or the other will be fetched and rendered. Note that the media attribute is available on all custom elements, so it can be used with non-image elements such as ads.
 
@@ -190,8 +218,8 @@ The element is sized and displayed based on the `layout`, `width`, `height` and 
 by the runtime. All of the layout rules are implemented via CSS internally. The element is said to
 "define size" if its size is inferrable via CSS styles and does not change based on its children:
 available immediately or inserted dynamically. This does not mean that this element's size cannot
-change. The layout could be fully responsive as is the case with `responsive`, `fixed-height` and
-`fill` layouts. It simply means that the size does not change without an explicit user action, e.g.
+change. The layout could be fully responsive as is the case with `responsive`, `fixed-height`, `fill` and
+`flex-item` layouts. It simply means that the size does not change without an explicit user action, e.g.
 during rendering or scrolling or post download.
 
 If the element has been configured incorrectly it will not be rendered at all in PROD and in DEV mode
@@ -217,3 +245,4 @@ apply as is the case with `amp-pixel` and `amp-audio`.
 | fixed-height | `height` only. `width` can be `auto` | yes, specified by the parent container and `height` | no | `block` |
 | fill         | no                     | yes, parent's size | no | `block` |
 | container    | no                     | no            | no | `block` |
+| flex-item    | no                     | no            | yes, based on parent container | `block` |

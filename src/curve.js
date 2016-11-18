@@ -14,13 +14,17 @@
  * limitations under the License.
  */
 
+// Imported just for the side effect of getting the `types` it exports into
+// the type system during compile time.
+import './time';
+
 
 /**
- * A Curve is a function that returns a normtime value (0 to 1) for another
+ * A CurveDef is a function that returns a normtime value (0 to 1) for another
  * normtime value.
- * @typedef {function(normtime):normtime}
+ * @typedef {function(./time.normtimeDef): ./time.normtimeDef}
  */
-class Curve {};
+export let CurveDef;
 
 
 /**
@@ -29,7 +33,7 @@ class Curve {};
  * @param {number} y1 Y coordinate of the first control point.
  * @param {number} x2 X coordinate of the second control point.
  * @param {number} y2 Y coordinate of the second control point.
- * @return {!Curve}
+ * @return {!CurveDef}
  */
 export function bezierCurve(x1, y1, x2, y2) {
   const bezier = new Bezier(0, 0, x1, y1, x2, y2, 1, 1);
@@ -135,8 +139,9 @@ class Bezier {
     // Try gradient descent to solve for t. If it works, it is very fast.
     let tMin = 0;
     let tMax = 1;
+    let value = 0;
     for (let i = 0; i < 8; i++) {
-      const value = this.getPointX(t);
+      value = this.getPointX(t);
       const derivative = (this.getPointX(t + epsilon) - value) / epsilon;
       if (Math.abs(value - xVal) < epsilon) {
         return t;
@@ -238,7 +243,7 @@ class Bezier {
 /**
  * A collection of common curves.
  * See https://developer.mozilla.org/en-US/docs/Web/CSS/timing-function
- * @enum {!Curve}
+ * @enum {!CurveDef}
  */
 export const Curves = {
   /**
@@ -254,7 +259,7 @@ export const Curves = {
   EASE: bezierCurve(0.25, 0.1, 0.25, 1.0),
 
   /**
-   * ease-out: slow out, fast in
+   * ease-in: slow out, fast in
    */
   EASE_IN: bezierCurve(0.42, 0.0, 1.0, 1.0),
 
@@ -266,32 +271,48 @@ export const Curves = {
   /**
    * ease-in-out
    */
-  EASE_IN_OUT: bezierCurve(0.42, 0.0, 0.58, 1.0)
+  EASE_IN_OUT: bezierCurve(0.42, 0.0, 0.58, 1.0),
 };
 
 
 /**
- * @const {!Object<string, !Curve>}
+ * @const {!Object<string, !CurveDef>}
  */
 const NAME_MAP = {
   'linear': Curves.LINEAR,
   'ease': Curves.EASE,
   'ease-in': Curves.EASE_IN,
   'ease-out': Curves.EASE_OUT,
-  'ease-in-out': Curves.EASE_IN_OUT
+  'ease-in-out': Curves.EASE_IN_OUT,
 };
 
 
 /**
  * If the argument is a string, this methods matches an existing curve by name.
- * @param {?Curve|string|undefined} curve
- * @return {?Curve}
+ * @param {?CurveDef|string|undefined} curve
+ * @return {?CurveDef}
  */
 export function getCurve(curve) {
   if (!curve) {
     return null;
   }
   if (typeof curve == 'string') {
+    // If the curve is a custom cubic-bezier curve
+    if (curve.indexOf('cubic-bezier') != -1) {
+      const match = curve.match(/cubic-bezier\((.+)\)/);
+      if (match) {
+        const values = match[1].split(',').map(parseFloat);
+        if (values.length == 4) {
+          for (let i = 0; i < 4; i++) {
+            if (isNaN(values[i])) {
+              return null;
+            }
+          }
+          return bezierCurve(values[0], values[1], values[2], values[3]);
+        }
+      }
+      return null;
+    }
     return NAME_MAP[curve];
   }
   return curve;

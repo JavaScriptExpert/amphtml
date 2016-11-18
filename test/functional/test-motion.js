@@ -56,38 +56,33 @@ describe('Motion calcVelocity', () => {
 
 describe('Motion continueMotion', () => {
   let sandbox;
-  let element;
   let clock;
   let vsync;
   let vsyncTasks;
+  let contextNode;
 
   beforeEach(() => {
     sandbox = sinon.sandbox.create();
-    element = document.createElement('div');
     clock = sandbox.useFakeTimers();
     vsyncTasks = [];
     vsync = {
-      runMutateSeries: mutator => {
+      runAnimMutateSeries: (unusedContextNode, mutator) => {
         vsyncTasks.push(mutator);
-        return new Promise((resolve, reject) => {});
-      }
+        return new Promise((unusedResolve, unusedReject) => {});
+      },
     };
+    contextNode = document.createElement('div');
   });
 
   afterEach(() => {
-    expect(vsyncTasks.length).to.equal(0);
-    vsync = null;
-    vsyncTasks = null;
-    clock.restore();
-    clock = null;
     sandbox.restore();
-    sandbox = null;
   });
 
   function testContinuation(maxVelocity, haltAfterTime) {
     let resultX = null;
     let resultY = null;
-    const motion = continueMotion(141, 104, maxVelocity, maxVelocity,
+    const motion = continueMotion(contextNode,
+        141, 104, maxVelocity, maxVelocity,
         (x, y) => {
           resultX = x;
           resultY = y;

@@ -15,6 +15,7 @@
  */
 
 import {Observable} from '../../src/observable';
+import * as sinon from 'sinon';
 
 describe('Observable', () => {
 
@@ -27,9 +28,7 @@ describe('Observable', () => {
   });
 
   afterEach(() => {
-    observable = null;
     sandbox.restore();
-    sandbox = null;
   });
 
   it('add-remove-fire', () => {
@@ -37,7 +36,7 @@ describe('Observable', () => {
     const observer1 = () => {
       observer1Called++;
     };
-    const observer1Key = observable.add(observer1);
+    observable.add(observer1);
 
     let observer2Called = 0;
     const observer2 = () => {
@@ -59,6 +58,13 @@ describe('Observable', () => {
 
     observer2Key();
     observable.fire('C');
+    expect(observer1Called).to.equal(1);
+    expect(observer2Called).to.equal(2);
+
+    observable.add(observer1);
+    observable.add(observer2);
+    observable.removeAll();
+    observable.fire('D');
     expect(observer1Called).to.equal(1);
     expect(observer2Called).to.equal(2);
   });

@@ -14,7 +14,9 @@
  * limitations under the License.
  */
 
-import {timer} from './timer';
+import {Observable} from './observable';
+import {timerFor} from './timer';
+import {dev} from './log';
 
 
 /**
@@ -36,18 +38,21 @@ export class FocusHistory {
     /** @private @const {!Array<!{el: !Element, time: time}>} */
     this.history_ = [];
 
+    /** @private @const {!Observable<!Element>} */
+    this.observeFocus_ = new Observable();
+
     /** @private @const {function(!Event)} */
     this.captureFocus_ = e => {
       if (e.target) {
-        this.pushFocus_(e.target);
+        this.pushFocus_(dev().assertElement(e.target));
       }
     };
     /** @private @const {function(!Event)} */
-    this.captureBlur_ = e => {
+    this.captureBlur_ = unusedE => {
       // IFrame elements do not receive `focus` event. An alternative way is
       // implemented here. We wait for a blur to arrive on the main window
       // and after a short time check which element is active.
-      timer.delay(() => {
+      timerFor(win).delay(() => {
         this.pushFocus_(this.win.document.activeElement);
       }, 500);
     };
@@ -62,11 +67,20 @@ export class FocusHistory {
   }
 
   /**
+   * Add a listener for focus events.
+   * @param {function(!Element)} handler
+   * @return {!UnlistenDef}
+   */
+  onFocus(handler) {
+    return this.observeFocus_.add(handler);
+  }
+
+  /**
    * @param {!Element} element
    * @private
    */
   pushFocus_(element) {
-    const now = timer.now();
+    const now = Date.now();
     if (this.history_.length == 0 ||
             this.history_[this.history_.length - 1].el != element) {
       this.history_.push({el: element, time: now});
@@ -74,11 +88,12 @@ export class FocusHistory {
       this.history_[this.history_.length - 1].time = now;
     }
     this.purgeBefore(now - this.purgeTimeout_);
+    this.observeFocus_.fire(element);
   }
 
   /**
    * Returns the element that was focused last.
-   * @return {!Element}
+   * @return {?Element}
    */
   getLast() {
     if (this.history_.length == 0) {

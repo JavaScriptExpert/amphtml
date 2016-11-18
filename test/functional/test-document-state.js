@@ -14,91 +14,21 @@
  * limitations under the License.
  */
 
-import {DocumentState, isDocumentReady, onDocumentReady} from
-    '../../src/document-state';
+import {DocumentState} from '../../src/document-state';
+import * as dom from '../../src/dom';
 import * as sinon from 'sinon';
-
-
-describe('documentReady', () => {
-
-  let testDoc;
-  let eventListeners;
-
-  beforeEach(() => {
-    eventListeners = {};
-    testDoc = {
-      readyState: 'loading',
-      addEventListener: (eventType, handler) => {
-        eventListeners[eventType] = handler;
-      },
-      removeEventListener: (eventType, handler) => {
-        if (eventListeners[eventType] == handler) {
-          delete eventListeners[eventType];
-        }
-      }
-    };
-  });
-
-  it('should interprete readyState correctly', () => {
-    expect(isDocumentReady(testDoc)).to.equal(false);
-
-    testDoc.readyState = 'interactive';
-    expect(isDocumentReady(testDoc)).to.equal(true);
-
-    testDoc.readyState = 'complete';
-    expect(isDocumentReady(testDoc)).to.equal(true);
-  });
-
-  it('should call callback immediately when ready', () => {
-    testDoc.readyState = 'complete';
-    const callback = sinon.spy();
-    onDocumentReady(testDoc, callback);
-    expect(callback.callCount).to.equal(1);
-  });
-
-  it('should wait to call callback until ready', () => {
-    testDoc.readyState = 'loading';
-    const callback = sinon.spy();
-    onDocumentReady(testDoc, callback);
-    expect(callback.callCount).to.equal(0);
-    expect(eventListeners['readystatechange']).to.not.equal(undefined);
-
-    // Complete
-    testDoc.readyState = 'complete';
-    eventListeners['readystatechange']();
-    expect(callback.callCount).to.equal(1);
-    expect(eventListeners['readystatechange']).to.equal(undefined);
-  });
-
-  it('should wait to call callback for several loading events', () => {
-    testDoc.readyState = 'loading';
-    const callback = sinon.spy();
-    onDocumentReady(testDoc, callback);
-    expect(callback.callCount).to.equal(0);
-    expect(eventListeners['readystatechange']).to.not.equal(undefined);
-
-    // Still loading
-    eventListeners['readystatechange']();
-    expect(callback.callCount).to.equal(0);
-    expect(eventListeners['readystatechange']).to.not.equal(undefined);
-
-    // Complete
-    testDoc.readyState = 'complete';
-    eventListeners['readystatechange']();
-    expect(callback.callCount).to.equal(1);
-    expect(eventListeners['readystatechange']).to.equal(undefined);
-  });
-});
 
 
 describe('DocumentState', () => {
 
+  let sandbox;
   let eventListeners;
   let testDoc;
   let windowApi;
   let docState;
 
   beforeEach(() => {
+    sandbox = sinon.sandbox.create();
     eventListeners = {};
     testDoc = {
       readyState: 'complete',
@@ -111,10 +41,14 @@ describe('DocumentState', () => {
         if (eventListeners[eventType] == handler) {
           delete eventListeners[eventType];
         }
-      }
+      },
     };
     windowApi = {document: testDoc};
     docState = new DocumentState(windowApi);
+  });
+
+  afterEach(() => {
+    sandbox.restore();
   });
 
   it('resolve non-vendor properties', () => {
@@ -128,8 +62,8 @@ describe('DocumentState', () => {
     const otherDoc = {
       webkitHidden: false,
       webkitVisibilityState: 'visible',
-      addEventListener: (eventType, handler) => {},
-      removeEventListener: (eventType, handler) => {}
+      addEventListener: (unusedEventType, unusedHandler) => {},
+      removeEventListener: (unusedEventType, unusedHandler) => {},
     };
     const other = new DocumentState({document: otherDoc});
     expect(other.hiddenProp_).to.equal('webkitHidden');
@@ -139,8 +73,8 @@ describe('DocumentState', () => {
 
   it('resolve no properties', () => {
     const otherDoc = {
-      addEventListener: (eventType, handler) => {},
-      removeEventListener: (eventType, handler) => {}
+      addEventListener: (unusedEventType, unusedHandler) => {},
+      removeEventListener: (unusedEventType, unusedHandler) => {},
     };
     const other = new DocumentState({document: otherDoc});
     expect(other.hiddenProp_).to.equal(null);
@@ -150,8 +84,8 @@ describe('DocumentState', () => {
 
   it('should default hidden and visibilityState if unknown', () => {
     const otherDoc = {
-      addEventListener: (eventType, handler) => {},
-      removeEventListener: (eventType, handler) => {}
+      addEventListener: (unusedEventType, unusedHandler) => {},
+      removeEventListener: (unusedEventType, unusedHandler) => {},
     };
     const other = new DocumentState({document: otherDoc});
     expect(other.isHidden()).to.equal(false);
@@ -159,7 +93,7 @@ describe('DocumentState', () => {
   });
 
   it('should fire visibility change', () => {
-    const callback = sinon.spy();
+    const callback = sandbox.spy();
     docState.onVisibilityChanged(callback);
 
     expect(docState.isHidden()).to.equal(false);
@@ -173,5 +107,25 @@ describe('DocumentState', () => {
     expect(docState.isHidden()).to.equal(true);
     expect(docState.getVisibilityState()).to.equal('invisible');
     expect(callback.callCount).to.equal(1);
+  });
+
+  it('should fire body availability change', () => {
+    const callback = sandbox.spy();
+    sandbox.stub(dom, 'waitForChild');
+
+    expect(testDoc.body).to.equal(undefined);
+
+    const first = docState.onBodyAvailable(callback);
+    expect(first).to.not.equal(null);
+    expect(callback.callCount).to.equal(0);
+
+    testDoc.body = {};
+    docState.onBodyAvailable_();
+
+    expect(callback.callCount).to.equal(1);
+
+    const second = docState.onBodyAvailable(callback);
+    expect(second).to.equal(null);
+    expect(callback.callCount).to.equal(2);
   });
 });

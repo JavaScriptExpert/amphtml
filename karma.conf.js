@@ -33,6 +33,7 @@ module.exports = function(config) {
       'test/fixtures/*.html': ['html2js'],
       'src/**/*.js': ['browserify'],
       'test/**/*.js': ['browserify'],
+      'ads/**/test/test-*.js': ['browserify'],
       'extensions/**/test/**/*.js': ['browserify'],
       'testing/**/*.js': ['browserify']
     },
@@ -50,21 +51,86 @@ module.exports = function(config) {
 
     colors: true,
 
-    logLevel: config.LOG_DEBUG,
+    proxies: {
+      '/ads/': '/base/ads/',
+      '/dist/': '/base/dist/',
+      '/dist.3p/': '/base/dist.3p/',
+      '/examples/': '/base/examples/',
+      '/extensions/': '/base/extensions/',
+      '/src/': '/base/src/',
+      '/test/': '/base/test/',
+    },
+
+    logLevel: config.LOG_WARN,
 
     autoWatch: true,
 
-    browsers: ['Chrome'],
+    browsers: ['Chrome_no_extensions'],
 
     customLaunchers: {
       /*eslint "google-camelcase/google-camelcase": 0*/
       Chrome_travis_ci: {
         base: 'Chrome',
-        flags: ['--no-sandbox'],
+        flags: ['--no-sandbox', '--disable-extensions',],
       },
-      SL_Chrome: {
+      Chrome_no_extensions: {
+        base: 'Chrome',
+        // Dramatically speeds up iframe creation time.
+        flags: ['--disable-extensions'],
+      },
+      // SauceLabs configurations.
+      // New configurations can be created here:
+      // https://wiki.saucelabs.com/display/DOCS/Platform+Configurator#/
+      SL_Chrome_android: {
+        base: 'SauceLabs',
+        browserName: 'android',
+      },
+      SL_Chrome_latest: {
         base: 'SauceLabs',
         browserName: 'chrome',
+      },
+      SL_Chrome_45: {
+        base: 'SauceLabs',
+        browserName: 'chrome',
+        version: '45',
+      },
+      SL_iOS_8_4: {
+        base: 'SauceLabs',
+        browserName: 'iphone',
+        version: '8.4',
+      },
+      SL_iOS_9_1: {
+        base: 'SauceLabs',
+        browserName: 'iphone',
+        version: '9.1',
+      },
+      SL_iOS_10_0: {
+        base: 'SauceLabs',
+        browserName: 'iphone',
+        version: '10.0',
+      },
+      SL_Firefox_latest: {
+        base: 'SauceLabs',
+        browserName: 'firefox',
+      },
+      SL_IE_11: {
+        base: 'SauceLabs',
+        browserName: 'internet explorer',
+        version: 11,
+      },
+      SL_Edge_latest: {
+        base: 'SauceLabs',
+        browserName: 'microsoftedge',
+      },
+      SL_Safari_9: {
+        base: 'SauceLabs',
+        browserName: 'safari',
+        version: 9,
+      },
+      SL_Safari_8: {
+        base: 'SauceLabs',
+        browserName: 'safari',
+        version: 8,
       },
     },
 

@@ -18,11 +18,13 @@
 /**
  * This is a very simple messaging protocol between viewer and viewer client.
  * @param {!Window} target
+ * @param {string} targetOrigin
  * @param {function(string, *, boolean):(!Promise<*>|undefined)}
  *    requestProcessor
+ * @param {string=} opt_targetId
  * @constructor
  */
-function ViewerMessaging(target, requestProcessor) {
+function ViewerMessaging(target, targetOrigin, requestProcessor, opt_targetId) {
   this.sentinel_ = '__AMP__';
   this.requestSentinel_ = this.sentinel_ + 'REQUEST';
   this.responseSentinel_ = this.sentinel_ + 'RESPONSE';
@@ -30,8 +32,18 @@ function ViewerMessaging(target, requestProcessor) {
   this.requestIdCounter_ = 0;
   this.waitingForResponse_ = {};
 
+  /** @const @private {!Widnow} */
   this.target_ = target;
+  /** @const @private {string|undefined} */
+  this.targetId_ = opt_targetId;
+  /** @const @private {string} */
+  this.targetOrigin_ = targetOrigin;
+  /** @const @private {function(string, *, boolean):(!Promise<*>|undefined)} */
   this.requestProcessor_ = requestProcessor;
+
+  if (!this.targetOrigin_) {
+    throw new Error('Target origin must be specified');
+  }
 
   window.addEventListener('message', this.onMessage_.bind(this), false);
 }
@@ -48,7 +60,7 @@ ViewerMessaging.prototype.sendRequest = function(eventType, payload,
   var requestId = ++this.requestIdCounter_;
   if (awaitResponse) {
     var promise = new Promise(function(resolve, reject) {
-      this.waitingForResponse_[requestId] = {resolve: resolve, reject: reject};
+      this.waitingForResponse_[requestId] = {resolve, reject};
     }.bind(this));
     this.sendMessage_(this.requestSentinel_, requestId, eventType, payload,
         true);
@@ -65,7 +77,9 @@ ViewerMessaging.prototype.sendRequest = function(eventType, payload,
  * @private
  */
 ViewerMessaging.prototype.onMessage_ = function(event) {
-  // TODO: must check for origin/target.
+  if (event.source != this.target_ || event.origin != this.targetOrigin_) {
+    return;
+  }
   var message = event.data;
   if (message.sentinel == this.requestSentinel_) {
     this.onRequest_(message);
@@ -125,15 +139,14 @@ ViewerMessaging.prototype.onResponse_ = function(message) {
  */
 ViewerMessaging.prototype.sendMessage_ = function(sentinel, requestId,
       eventType, payload, awaitResponse) {
-  // TODO: must check for origin/target.
   var message = {
-    sentinel: sentinel,
-    requestId: requestId,
+    sentinel,
+    requestId,
     type: eventType,
-    payload: payload,
+    payload,
     rsvp: awaitResponse
   };
-  this.target_./*TODO-REVIEW*/postMessage(message, '*');
+  this.target_./*OK*/postMessage(message, this.targetOrigin_);
 };
 
 

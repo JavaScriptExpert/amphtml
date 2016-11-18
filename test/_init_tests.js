@@ -15,51 +15,220 @@
  */
 
 // This must load before all other tests.
+import '../third_party/babel/custom-babel-helpers';
 import '../src/polyfills';
-import {adopt} from '../src/runtime';
+import {removeElement} from '../src/dom';
+import {
+  adopt,
+  installAmpdocServices,
+  installRuntimeServices,
+} from '../src/runtime';
+import {activateChunkingForTesting} from '../src/chunk';
+import {installDocService} from '../src/service/ampdoc-impl';
+import {platformFor} from '../src/platform';
+import {setDefaultBootstrapBaseUrlForTesting} from '../src/3p-frame';
+import {resetAccumulatedErrorMessagesForTesting} from '../src/error';
+import * as describes from '../testing/describes';
 
-adopt(global);
 
-// Hack for skipping tests on Travis that don't work there.
-// Get permission before use!
+// All exposed describes.
+global.describes = describes;
+
+// Increase the before/after each timeout since certain times they have timedout
+// during the normal 2000 allowance.
+const BEFORE_AFTER_TIMEOUT = 5000;
+
+// Needs to be called before the custom elements are first made.
+beforeTest();
+adopt(window);
+
+// Override AMP.extension to buffer extension installers.
 /**
- * @param {string} desc
- * @param {function()} fn
+ * @param {string} name
+ * @param {string} version
+ * @param {function(!Object)} installer
+ * @const
  */
-it.skipOnTravis = function(desc, fn) {
-  if (navigator.userAgent.match(/Chromium/)) {
-    it.skip(desc, fn);
-    return;
-  }
-  it(desc, fn);
+global.AMP.extension = function(name, version, installer) {
+  describes.bufferExtension(`${name}:${version}`, installer);
 };
 
-// Hack for skipping tests on Travis that don't work there.
-// Get permission before use!
+
+// Make amp section in karma config readable by tests.
+window.ampTestRuntimeConfig = parent.karma ? parent.karma.config.amp : {};
+
 /**
- * @param {string} desc
- * @param {function()} fn
- */
-it.skipOnFirefox = function(desc, fn) {
-  if (navigator.userAgent.match(/Firefox/)) {
-    it.skip(desc, fn);
-    return;
+ * Helper class to skip or retry tests under specific environment.
+ * Should be instantiated via describe.configure() or it.configure().
+ * Get permission before use!
+ *
+ * Example usages:
+ * describe.configure().skipFirefox().skipSafari().run('Bla bla ...', ... );
+ * it.configure().skipEdge().run('Should ...', ...);
+*/
+class TestConfig {
+
+  constructor(runner) {
+    this.runner = runner;
+    /**
+     * List of predicate functions that are called before running each test
+     * suite to check whether the suite should be skipped or not.
+     * If any of the functions return 'true', the suite will be skipped.
+     * @type {!Array<function():boolean>}
+     */
+    this.skipMatchers = [];
+    /**
+     * Called for each test suite (things created by `describe`).
+     * @type {!Array<function(!TestSuite)>}
+     */
+    this.configTasks = [];
+    this.platform_ = platformFor(window);
   }
-  it(desc, fn);
+
+  skipChrome() {
+    return this.skip(this.platform_.isChrome.bind(this.platform_));
+  }
+
+  skipEdge() {
+    return this.skip(this.platform_.isEdge.bind(this.platform_));
+  }
+
+  skipFirefox() {
+    return this.skip(this.platform_.isFirefox.bind(this.platform_));
+  }
+
+  skipSafari() {
+    return this.skip(this.platform_.isSafari.bind(this.platform_));
+  }
+
+  /**
+   * @param {function():boolean} fn
+   */
+  skip(fn) {
+    this.skipMatchers.push(fn);
+    return this;
+  }
+
+  retryOnSaucelabs() {
+    if (!window.ampTestRuntimeConfig.saucelabs) {
+      return this;
+    }
+    this.configTasks.push(mocha => {
+      mocha.retries(4);
+    });
+    return this;
+  }
+
+  /**
+   * @param {string} desc
+   * @param {function()} fn
+   */
+  run(desc, fn) {
+    for (let i = 0; i < this.skipMatchers.length; i++) {
+      if (this.skipMatchers[i]()) {
+        this.runner.skip(desc, fn);
+        return;
+      }
+    }
+
+    const tasks = this.configTasks;
+    this.runner(desc, function() {
+      tasks.forEach(task => {
+        task(this);
+      });
+      return fn.apply(this, arguments);
+    });
+  }
+}
+
+describe.configure = function() {
+  return new TestConfig(describe);
 };
+
+it.configure = function() {
+  return new TestConfig(it);
+};
+
+// Used to check if an unrestored sandbox exists
+const sandboxes = [];
+const create = sinon.sandbox.create;
+sinon.sandbox.create = function(config) {
+  const sandbox = create.call(sinon.sandbox, config);
+  sandboxes.push(sandbox);
+
+  const restore = sandbox.restore;
+  sandbox.restore = function() {
+    const i = sandboxes.indexOf(sandbox);
+    if (i > -1) {
+      sandboxes.splice(i, 1);
+    }
+    return restore.call(sandbox);
+  };
+  return sandbox;
+};
+
+beforeEach(function() {
+  this.timeout(BEFORE_AFTER_TIMEOUT);
+  beforeTest();
+});
+
+function beforeTest() {
+  activateChunkingForTesting();
+  window.AMP_MODE = null;
+  window.AMP_CONFIG = {
+    canary: 'testSentinel',
+  };
+  window.AMP_TEST = true;
+  window.ampExtendedElements = {};
+  const ampdocService = installDocService(window, true);
+  const ampdoc = ampdocService.getAmpDoc(window.document);
+  installRuntimeServices(window);
+  installAmpdocServices(ampdoc);
+}
 
 // Global cleanup of tags added during tests. Cool to add more
 // to selector.
-afterEach(() => {
-  const cleanup = document.querySelectorAll('link,meta');
+afterEach(function() {
+  this.timeout(BEFORE_AFTER_TIMEOUT);
+  const cleanupTagNames = ['link', 'meta'];
+  if (!platformFor(window).isSafari()) {
+    // TODO(#3315): Removing test iframes break tests on Safari.
+    cleanupTagNames.push('iframe');
+  }
+  const cleanup = document.querySelectorAll(cleanupTagNames.join(','));
   for (let i = 0; i < cleanup.length; i++) {
     try {
-      cleanup[i].parentNode.removeChild(cleanup[i]);
+      const element = cleanup[i];
+      removeElement(element);
     } catch (e) {
       // This sometimes fails for unknown reasons.
       console./*OK*/log(e);
     }
   }
+  window.localStorage.clear();
+  window.ampExtendedElements = {};
+  window.ENABLE_LOG = false;
+  window.AMP_DEV_MODE = false;
+  window.context = undefined;
+  const forgotGlobal = !!global.sandbox;
+  if (forgotGlobal) {
+    // The error will be thrown later to give possibly other sandboxes a
+    // chance to restore themselves.
+    delete global.sandbox;
+  }
+  if (sandboxes.length > 0) {
+    sandboxes.splice(0, sandboxes.length).forEach(sb => sb.restore());
+    throw new Error('You forgot to restore your sandbox!');
+  }
+  if (forgotGlobal) {
+    throw new Error('You forgot to clear global sandbox!');
+  }
+  if (!/native/.test(window.setTimeout)) {
+    throw new Error('You likely forgot to restore sinon timers ' +
+        '(installed via sandbox.useFakeTimers).');
+  }
+  setDefaultBootstrapBaseUrlForTesting(null);
+  resetAccumulatedErrorMessagesForTesting();
 });
 
 chai.Assertion.addMethod('attribute', function(attr) {
@@ -88,32 +257,37 @@ chai.Assertion.addMethod('class', function(className) {
 
 chai.Assertion.addProperty('visible', function() {
   const obj = this._obj;
-  const value = window.getComputedStyle(obj)
-      .getPropertyValue('visibility');
+  const computedStyle = window.getComputedStyle(obj);
+  const visibility = computedStyle.getPropertyValue('visibility');
+  const opacity = computedStyle.getPropertyValue('opacity');
+  const isOpaque = parseInt(opacity, 10) > 0;
   const tagName = obj.tagName.toLowerCase();
   this.assert(
-    value === 'visible',
-    'expected element \'' +
-        tagName + '\' to be #{exp}, got #{act}. with classes: ' + obj.className,
-    'expected element \'' +
-        tagName + '\' not to be #{act}. with classes: ' + obj.className,
-    'visible',
-    value
+      visibility === 'visible' && isOpaque,
+      'expected element \'' +
+      tagName + '\' to be #{exp}, got #{act}. with classes: ' + obj.className,
+      'expected element \'' +
+      tagName + '\' not to be #{exp}, got #{act}. with classes: ' +
+      obj.className,
+      'visible and opaque',
+      `visibility = ${visibility} and opacity = ${opacity}`
   );
 });
 
 chai.Assertion.addProperty('hidden', function() {
   const obj = this._obj;
-  const value = window.getComputedStyle(obj).getPropertyValue('visibility');
+  const computedStyle = window.getComputedStyle(obj);
+  const visibility = computedStyle.getPropertyValue('visibility');
+  const opacity = computedStyle.getPropertyValue('opacity');
   const tagName = obj.tagName.toLowerCase();
   this.assert(
-     value === 'hidden',
+     visibility === 'hidden' || parseInt(opacity, 10) == 0,
     'expected element \'' +
         tagName + '\' to be #{exp}, got #{act}. with classes: ' + obj.className,
     'expected element \'' +
         tagName + '\' not to be #{act}. with classes: ' + obj.className,
     'hidden',
-    value
+    visibility
   );
 });
 
@@ -143,3 +317,4 @@ chai.Assertion.addMethod('jsonEqual', function(compare) {
   );
 });
 
+sinon = null;

@@ -15,9 +15,18 @@
  */
 
 
-require('../src/polyfills');
 import {Timer} from '../src/timer';
-import {registerForUnitTest} from '../src/runtime';
+import installCustomElements from
+    'document-register-element/build/document-register-element.node';
+import {installDocService} from '../src/service/ampdoc-impl';
+import {installExtensionsService} from '../src/service/extensions-impl';
+import {
+  installAmpdocServices,
+  installRuntimeServices,
+  registerForUnitTest,
+} from '../src/runtime';
+import {installStyles} from '../src/style-installer';
+import {cssText} from '../build/css';
 
 let iframeCount = 0;
 
@@ -39,6 +48,8 @@ let iframeCount = 0;
  *
  * @param {string} fixture The name of the fixture file.
  * @param {number} initialIframeHeight in px.
+ * @param {function(!Window)} opt_beforeLoad Called just before any other JS
+ *     executes in the window.
  * @return {!Promise<{
  *   win: !Window,
  *   doc: !Document,
@@ -46,27 +57,43 @@ let iframeCount = 0;
  *   awaitEvent: function(string, number):!Promise
  * }>}
  */
-export function createFixtureIframe(fixture, initialIframeHeight, done) {
+export function createFixtureIframe(fixture, initialIframeHeight, opt_beforeLoad) {
   return new Promise((resolve, reject) => {
     // Counts the supported custom events.
     const events = {
       'amp:attached': 0,
       'amp:error': 0,
       'amp:stubbed': 0,
-      'amp:load:start': 0
+      'amp:load:start': 0,
     };
+    const messages = [];
     let html = __html__[fixture];
     if (!html) {
       throw new Error('Cannot find fixture: ' + fixture);
     }
+    html = maybeSwitchToCompiledJs(html);
     let firstLoad = true;
+    window.ENABLE_LOG = true;
     // This global function will be called by the iframe immediately when it
     // starts loading. This appears to be the only way to get the correct
     // window object early enough to not miss any events that may get fired
     // on that window.
     window.beforeLoad = function(win) {
       // Flag as being a test window.
+      win.AMP_TEST_IFRAME = true;
       win.AMP_TEST = true;
+      win.ampTestRuntimeConfig = window.ampTestRuntimeConfig;
+      if (opt_beforeLoad) {
+        opt_beforeLoad(win);
+      }
+      win.addEventListener('message', (event) => {
+        if (event.data &&
+            // Either non-3P or 3P variant of the sentinel.
+            (/^amp/.test(event.data.sentinel) ||
+             /^\d+-\d+$/.test(event.data.sentinel))) {
+          messages.push(event.data);
+        }
+      })
       // Function that returns a promise for when the given event fired at
       // least count times.
       let awaitEvent = (eventName, count) => {
@@ -92,22 +119,24 @@ export function createFixtureIframe(fixture, initialIframeHeight, done) {
         });
       }
       win.onerror = function(message, file, line, col, error) {
-        throw new Error('Error in frame: ' + message + '\n' +
+        reject(new Error('Error in frame: ' + message + '\n' +
             file + ':' + line + '\n' +
-            (error ? error.stack : 'no stack'));
+            (error ? error.stack : 'no stack')));
       };
       let errors = [];
       win.console.error = function() {
         errors.push('Error: ' + [].slice.call(arguments).join(' '));
+        console.error.apply(console, arguments);
       };
       // Make time go 10x as fast
+      let setTimeout = win.setTimeout;
       win.setTimeout = function(fn, ms) {
         ms = ms || 0;
         setTimeout(fn, ms / 10);
       };
       let timeout = setTimeout(function() {
         reject(new Error('Timeout waiting for elements to start loading.'));
-      }, 1000);
+      }, 2000);
       // Declare the test ready to run when the document was fully parsed.
       window.afterLoad = function() {
         resolve({
@@ -115,7 +144,8 @@ export function createFixtureIframe(fixture, initialIframeHeight, done) {
           doc: win.document,
           iframe: iframe,
           awaitEvent: awaitEvent,
-          errors: errors
+          errors: errors,
+          messages: messages,
         });
       };
     };
@@ -123,14 +153,26 @@ export function createFixtureIframe(fixture, initialIframeHeight, done) {
     html = html.replace('>', '><script>parent.beforeLoad(window);</script>');
     html += '<script>parent.afterLoad(window);</script>';
     let iframe = document.createElement('iframe');
+    if (/iPhone|iPad|iPod/.test(navigator.userAgent)) {
+      iframe.setAttribute('scrolling', 'no');
+    }
     iframe.name = 'test_' + fixture + iframeCount++;
     iframe.onerror = function(event) {
-      throw event.error;
+      reject(event.error);
     };
-    iframe.srcdoc = html;
     iframe.height = initialIframeHeight;
     iframe.width = 500;
-    document.body.appendChild(iframe);
+    if ('srcdoc' in iframe) {
+      iframe.srcdoc = html;
+      document.body.appendChild(iframe);
+    } else {
+      iframe.src = 'about:blank';
+      document.body.appendChild(iframe);
+      const idoc = iframe.contentWindow.document;
+      idoc.open();
+      idoc.write(html);
+      idoc.close();
+    }
   });
 }
 
@@ -149,6 +191,7 @@ export function createFixtureIframe(fixture, initialIframeHeight, done) {
  * @return {!Promise<{
  *   win: !Window,
  *   doc: !Document,
+ *   ampdoc: !../src/service/ampdoc-impl.AmpDoc,
  *   iframe: !Element,
  *   addElement: function(!Element):!Promise
  * }>}
@@ -158,36 +201,53 @@ export function createIframePromise(opt_runtimeOff, opt_beforeLayoutCallback) {
     let iframe = document.createElement('iframe');
     iframe.name = 'test_' + iframeCount++;
     iframe.srcdoc = '<!doctype><html><head>' +
-        '<script src="/base/build/polyfills.js"></script>' +
-        '<body style="margin:0"><div id=parent></div>';
+        '<body><div id=parent></div>';
     iframe.onload = function() {
       // Flag as being a test window.
-      iframe.contentWindow.AMP_TEST = true;
+      iframe.contentWindow.AMP_TEST_IFRAME = true;
       if (opt_runtimeOff) {
         iframe.contentWindow.name = '__AMP__off=1';
       }
+      const ampdocService = installDocService(iframe.contentWindow, true);
+      const ampdoc = ampdocService.getAmpDoc(iframe.contentWindow.document);
+      installExtensionsService(iframe.contentWindow);
+      installRuntimeServices(iframe.contentWindow);
+      installCustomElements(iframe.contentWindow);
+      installAmpdocServices(ampdoc);
       registerForUnitTest(iframe.contentWindow);
-      resolve({
-        win: iframe.contentWindow,
-        doc: iframe.contentWindow.document,
-        iframe: iframe,
-        addElement: function(element) {
-          iframe.contentWindow.document.getElementById('parent')
-              .appendChild(element);
-          // Wait for mutation observer to fire.
-          return new Timer(window).promise(16).then(() => {
-            // Make sure it has dimensions since no styles are available.
-            element.style.display = 'block';
-            element.build(true);
-            if (element.layoutCount_ == 0) {
-              if (opt_beforeLayoutCallback) {
-                opt_beforeLayoutCallback();
+      // Act like no other elements were loaded by default.
+      iframe.contentWindow.ampExtendedElements = {};
+      installStyles(iframe.contentWindow.document, cssText, () => {
+        resolve({
+          win: iframe.contentWindow,
+          doc: iframe.contentWindow.document,
+          ampdoc: ampdoc,
+          iframe: iframe,
+          addElement: function(element) {
+            const iWin = iframe.contentWindow;
+            const p = onInsert(iWin).then(() => {
+              element.build(true);
+              if (!element.getPlaceholder()) {
+                const placeholder = element.createPlaceholder();
+                if (placeholder) {
+                  element.appendChild(placeholder);
+                }
               }
-              element.layoutCallback();
-            }
-            return element;
-          });
-        }
+              if (element.layoutCount_ == 0) {
+                if (opt_beforeLayoutCallback) {
+                  opt_beforeLayoutCallback(element);
+                }
+                return element.layoutCallback().then(() => {
+                  return element;
+                });
+              }
+              return element;
+            });
+            iWin.document.getElementById('parent')
+                .appendChild(element);
+            return p;
+          },
+        });
       });
     };
     iframe.onerror = reject;
@@ -195,23 +255,124 @@ export function createIframePromise(opt_runtimeOff, opt_beforeLayoutCallback) {
   });
 }
 
+export function createServedIframe(src) {
+  return new Promise(function(resolve, reject) {
+    const iframe = document.createElement('iframe');
+    iframe.name = 'test_' + iframeCount++;
+    iframe.src = src;
+    iframe.onload = function() {
+      const win = iframe.contentWindow;
+      win.AMP_TEST_IFRAME = true;
+      win.AMP_TEST = true;
+      installRuntimeServices(win);
+      registerForUnitTest(win);
+      resolve({
+        win: win,
+        doc: win.document,
+        iframe: iframe
+      });
+    };
+    iframe.onerror = reject;
+    document.body.appendChild(iframe);
+  });
+}
+
+const IFRAME_STUB_URL =
+    '//ads.localhost:9876/test/fixtures/served/iframe-stub.html#';
+
+/**
+ * Creates an iframe fixture in the given window that can be used for
+ * window.postMessage related tests.
+ *
+ * It provides functions like:
+ * - instruct the iframe to post a message to the parent window
+ * - verify the iframe has received a message from the parent window
+ *
+ * See /test/fixtures/served/iframe-stub.html for implementation.
+ *
+ * @param win {!Window}
+ * @returns {!HTMLIFrameElement}
+ */
+export function createIframeWithMessageStub(win) {
+  const element = win.document.createElement('iframe');
+  element.src = IFRAME_STUB_URL;
+
+  /**
+   * Instructs the iframe to send a message to parent window.
+   */
+  element.postMessageToParent = msg => {
+    element.src = IFRAME_STUB_URL + encodeURIComponent(JSON.stringify(msg));
+  };
+
+  /**
+   * Returns a Promise that resolves when the iframe acknowledged the reception
+   * of the specified message.
+   */
+  element.expectMessageFromParent = msg => {
+    return new Promise(resolve => {
+      const listener = event => {
+        let expectMsg = msg;
+        let actualMsg = event.data.receivedMessage;
+        if (typeof expectMsg !== 'string') {
+          expectMsg = JSON.stringify(expectMsg);
+          actualMsg = JSON.stringify(actualMsg);
+        }
+        if (event.source == element.contentWindow
+            && event.data.testStubEcho
+            && expectMsg == actualMsg) {
+          win.removeEventListener('message', listener);
+          resolve(msg);
+        }
+      };
+      win.addEventListener('message', listener);
+    });
+  };
+  return element;
+}
+
+/**
+ * Returns a Promise that resolves when a post message is observed from the
+ * given source window to target window.
+ *
+ * @param sourceWin {!Window}
+ * @param targetwin {!Window}
+ * @param msg {!Object}
+ * @returns {!Promise<!Object>}
+ */
+export function expectPostMessage(sourceWin, targetwin, msg) {
+  return new Promise(resolve => {
+    const listener = event => {
+      if (event.source == sourceWin
+          && JSON.stringify(msg) == JSON.stringify(event.data)) {
+        targetwin.removeEventListener('message', listener);
+        resolve(event.data);
+      }
+    };
+    targetwin.addEventListener('message', listener);
+  });
+}
+
 /**
  * Returns a promise for when the condition becomes true.
  * @param {string} description
- * @param {fn():boolean} condition
+ * @param {fn():T} condition Should return a truthy value when the poll
+ *     is done. The return value is then returned with the promise
+ *     returned by this function.
  * @param {fn():!Error=} opt_onError
  * @param {number=} opt_timeout
- * @return {!Promise}
+ * @return {!Promise<T>} The polled for value.
+ * @template T
  */
 export function poll(description, condition, opt_onError, opt_timeout) {
   return new Promise((resolve, reject) => {
-    let start = new Date().getTime();
+    let start = Date.now();
     function poll() {
-      if (condition()) {
+      const ret = condition();
+      if (ret) {
         clearInterval(interval);
-        resolve();
+        resolve(ret);
       } else {
-        if (new Date().getTime() - start > (opt_timeout || 1600)) {
+        if (Date.now() - start > (opt_timeout || 1600)) {
           clearInterval(interval);
           if (opt_onError) {
             reject(opt_onError());
@@ -221,7 +382,7 @@ export function poll(description, condition, opt_onError, opt_timeout) {
         }
       }
     }
-    let interval = setInterval(poll, 50);
+    let interval = setInterval(poll, 8);
     poll();
   });
 }
@@ -255,6 +416,98 @@ export function pollForLayout(win, count, opt_timeout) {
  */
 export function expectBodyToBecomeVisible(win) {
   return poll('expect body to become visible', () => {
-    return win.document.body && win.document.body.style.opacity == '1';
-  });
+    return win && win.document && win.document.body && (
+        (win.document.body.style.visibility == 'visible'
+            && win.document.body.style.opacity != '0')
+        || win.document.body.style.opacity == '1');
+  }, undefined, 5000);
+}
+
+/**
+ * For the given iframe, makes the creation of iframes and images
+ * create elements that do not actually load their underlying
+ * resources.
+ * Calling `triggerLoad` makes the respective resource appear loaded.
+ * Calling `triggerError` on the respective resources makes them
+ * appear in error state.
+ * @param {!Window} win
+ */
+export function doNotLoadExternalResourcesInTest(win) {
+  const createElement = win.document.createElement;
+  win.document.createElement = function(tagName) {
+    const element = createElement.apply(this, arguments);
+    tagName = tagName.toLowerCase();
+    if (tagName == 'iframe' || tagName == 'img') {
+      // Make get/set write to a fake property instead of
+      // triggering invocation.
+      Object.defineProperty(element, 'src', {
+        set: function(val) {
+          this.fakeSrc = val;
+        },
+        get: function() {
+          return this.fakeSrc;
+        }
+      });
+      // Triggers a load event on the element in the next micro task.
+      element.triggerLoad = function() {
+        const e = new Event('load');
+        Promise.resolve().then(() => {
+          this.dispatchEvent(e);
+        });
+      };
+      // Triggers an error event on the element in the next micro task.
+      element.triggerError = function() {
+        const e = new Event('error');
+        Promise.resolve().then(() => {
+          this.dispatchEvent(e);
+        });
+      };
+      if (tagName == 'iframe') {
+        element.srcdoc = '<h1>Fake iframe</h1>';
+      }
+    }
+    return element;
+  };
+}
+
+/**
+ * Returns a promise for when an element has been added to the given
+ * window. This is for use in tests to wait until after the
+ * attachment of an element to the DOM should have been registered.
+ * @param {!Window} win
+ * @return {!Promise<undefined>}
+ */
+function onInsert(win) {
+  return new Promise(resolve => {
+    const observer = new win.MutationObserver(() => {
+      observer.disconnect();
+      resolve();
+    });
+    observer.observe(win.document.documentElement, {
+      childList: true,
+      subtree: true,
+    });
+  })
+}
+
+/**
+ * Takes a HTML document that is pointing to unminified JS and HTML
+ * binaries and massages the URLs to pointed to compiled binaries
+ * instead.
+ * @param {string} html
+ * @return {string}
+ */
+function maybeSwitchToCompiledJs(html) {
+  if (window.ampTestRuntimeConfig.useCompiledJs) {
+    return html
+        // Main JS
+        .replace(/\/dist\/amp\.js/, '/dist/v0.js')
+        // Extensions
+        .replace(/\.max\.js/g, '.js')
+        // 3p html binary
+        .replace(/\.max\.html/g, '.html')
+        // 3p path
+        .replace(/dist\.3p\/current\//g, 'dist.3p/current-min/');
+  }
+  return html;
 }

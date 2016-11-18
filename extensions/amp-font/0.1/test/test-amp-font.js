@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import {AmpFont} from '../amp-font';
+import '../amp-font';
 import {FontLoader} from '../fontloader';
 import {adopt} from '../../../../src/runtime';
 import {createIframePromise} from '../../../../testing/iframe';
@@ -25,17 +25,13 @@ adopt(window);
 describe('amp-font', function() {
 
   let sandbox;
-  let setupLoadSuccessSpy;
-  let setupLoadFailureSpy;
 
   beforeEach(() => {
     sandbox = sinon.sandbox.create();
   });
 
   afterEach(() => {
-    restoreSpy(setupLoadSuccessSpy);
-    restoreSpy(setupLoadFailureSpy);
-    restoreSpy(sandbox);
+    sandbox.restore();
   });
 
   function getAmpFontIframe() {
@@ -50,20 +46,14 @@ describe('amp-font', function() {
       font.setAttribute('on-load-add-class', 'comic-amp-font-loaded');
       font.setAttribute('on-error-remove-class', 'comic-amp-font-loading');
       font.setAttribute('on-load-remove-class', 'comic-amp-font-loading');
-      return iframe.addElement(font).then(f => {
+      return iframe.addElement(font).then(unusedF => {
         return Promise.resolve(iframe);
       });
     });
   }
 
-  function restoreSpy(spy) {
-    if (spy) {
-      spy.restore();
-    }
-  }
-
   it('should timeout while loading custom font', function(done) {
-    setupLoadFailureSpy = sinon.stub(FontLoader.prototype, 'load')
+    sandbox.stub(FontLoader.prototype, 'load')
         .returns(Promise.reject('mock rejection'));
     return getAmpFontIframe().then(iframe => {
       expect(iframe.doc.documentElement)
@@ -75,8 +65,7 @@ describe('amp-font', function() {
   });
 
   it('should load custom font', function(done) {
-    setupLoadSuccessSpy =
-        sinon.stub(FontLoader.prototype, 'load').returns(Promise.resolve());
+    sandbox.stub(FontLoader.prototype, 'load').returns(Promise.resolve());
     return getAmpFontIframe().then(iframe => {
       expect(iframe.doc.documentElement)
           .to.have.class('comic-amp-font-loaded');

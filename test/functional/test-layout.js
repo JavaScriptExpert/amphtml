@@ -15,7 +15,7 @@
  */
 
 import {Layout, assertLength, getLengthNumeral, getLengthUnits, parseLength,
-    parseLayout} from '../../src/layout';
+    parseLayout, assertLengthOrPercent} from '../../src/layout';
 import {applyLayout_} from '../../src/custom-element';
 
 
@@ -46,6 +46,12 @@ describe('Layout', () => {
     expect(parseLength('10px')).to.equal('10px');
     expect(parseLength('10em')).to.equal('10em');
     expect(parseLength('10vmin')).to.equal('10vmin');
+    expect(parseLength('10cm')).to.equal('10cm');
+    expect(parseLength('10mm')).to.equal('10mm');
+    expect(parseLength('10in')).to.equal('10in');
+    expect(parseLength('10pt')).to.equal('10pt');
+    expect(parseLength('10pc')).to.equal('10pc');
+    expect(parseLength('10q')).to.equal('10q');
 
     expect(parseLength(10.1)).to.equal('10.1px');
     expect(parseLength('10.2')).to.equal('10.2px');
@@ -78,17 +84,29 @@ describe('Layout', () => {
     expect(getLengthNumeral('10.1px')).to.equal(10.1);
     expect(getLengthNumeral('10.1em')).to.equal(10.1);
     expect(getLengthNumeral('10.1vmin')).to.equal(10.1);
+
+    expect(getLengthNumeral(null)).to.equal(undefined);
+    expect(getLengthNumeral('auto')).to.equal(undefined);
   });
 
   it('assertLength', () => {
     expect(assertLength('10px')).to.equal('10px');
     expect(assertLength('10em')).to.equal('10em');
     expect(assertLength('10vmin')).to.equal('10vmin');
+    expect(assertLength('10cm')).to.equal('10cm');
+    expect(assertLength('10mm')).to.equal('10mm');
+    expect(assertLength('10in')).to.equal('10in');
+    expect(assertLength('10pt')).to.equal('10pt');
+    expect(assertLength('10pc')).to.equal('10pc');
+    expect(assertLength('10q')).to.equal('10q');
 
     expect(assertLength('10.1px')).to.equal('10.1px');
     expect(assertLength('10.1em')).to.equal('10.1em');
     expect(assertLength('10.1vmin')).to.equal('10.1vmin');
 
+    expect(function() {
+      assertLength('10%');
+    }).to.throw(/Invalid length value/);
     expect(function() {
       assertLength(10);
     }).to.throw(/Invalid length value/);
@@ -104,6 +122,34 @@ describe('Layout', () => {
     expect(function() {
       assertLength('');
     }).to.throw(/Invalid length value/);
+  });
+
+
+  it('assertLengthOrPercent', () => {
+    expect(assertLengthOrPercent('10px')).to.equal('10px');
+    expect(assertLengthOrPercent('10em')).to.equal('10em');
+    expect(assertLengthOrPercent('10vmin')).to.equal('10vmin');
+
+    expect(assertLengthOrPercent('10.1px')).to.equal('10.1px');
+    expect(assertLengthOrPercent('10.1em')).to.equal('10.1em');
+    expect(assertLengthOrPercent('10.1vmin')).to.equal('10.1vmin');
+    expect(assertLengthOrPercent('10.1%')).to.equal('10.1%');
+
+    expect(function() {
+      assertLengthOrPercent(10);
+    }).to.throw(/Invalid length or percent value/);
+    expect(function() {
+      assertLengthOrPercent('10');
+    }).to.throw(/Invalid length or percent value/);
+    expect(function() {
+      assertLengthOrPercent(undefined);
+    }).to.throw(/Invalid length or percent value/);
+    expect(function() {
+      assertLengthOrPercent(null);
+    }).to.throw(/Invalid length or percent value/);
+    expect(function() {
+      assertLengthOrPercent('');
+    }).to.throw(/Invalid length or percent value/);
   });
 
 
@@ -142,7 +188,7 @@ describe('Layout', () => {
   it('layout=fixed - requires width/height', () => {
     div.setAttribute('layout', 'fixed');
     expect(() => applyLayout_(div)).to.throw(
-        /to be available and be an integer/);
+        /Expected height to be available/);
   });
 
 
@@ -196,7 +242,7 @@ describe('Layout', () => {
   it('layout=fixed-height - requires height', () => {
     div.setAttribute('layout', 'fixed-height');
     expect(() => applyLayout_(div)).to.throw(
-        /to be available and be an integer/);
+        /Expected height to be available/);
   });
 
 
@@ -248,6 +294,18 @@ describe('Layout', () => {
     expect(div.children.length).to.equal(0);
   });
 
+  it('layout=flex-item', () => {
+    div.setAttribute('layout', 'flex-item');
+    div.setAttribute('width', 100);
+    div.setAttribute('height', 200);
+    expect(applyLayout_(div)).to.equal(Layout.FLEX_ITEM);
+    expect(div.style.width).to.equal('100px');
+    expect(div.style.height).to.equal('200px');
+    expect(div).to.have.class('-amp-layout-flex-item');
+    expect(div).to.have.class('-amp-layout-size-defined');
+    expect(div.children.length).to.equal(0);
+  });
+
   it('layout=unknown', () => {
     div.setAttribute('layout', 'foo');
     expect(function() {
@@ -293,5 +351,35 @@ describe('Layout', () => {
     expect(applyLayout_(pixel)).to.equal(Layout.FIXED_HEIGHT);
     expect(pixel.style.height).to.equal('1px');
     expect(pixel.style.width).to.equal('');
+  });
+
+  it('should fail invalid width and height', () => {
+    const pixel = document.createElement('amp-pixel');
+
+    // Everything is good.
+    pixel.setAttribute('width', '1px');
+    pixel.setAttribute('height', '1px');
+    expect(() => {
+      applyLayout_(pixel);
+    }).to.not.throw();
+
+    // Width=auto is also correct.
+    pixel.setAttribute('width', 'auto');
+    expect(() => {
+      applyLayout_(pixel);
+    }).to.not.throw();
+
+    // Width=X is invalid.
+    pixel.setAttribute('width', 'X');
+    expect(() => {
+      applyLayout_(pixel);
+    }).to.throw(/Invalid width value/);
+
+    // Height=X is invalid.
+    pixel.setAttribute('height', 'X');
+    pixel.setAttribute('width', '1px');
+    expect(() => {
+      applyLayout_(pixel);
+    }).to.throw(/Invalid height value/);
   });
 });

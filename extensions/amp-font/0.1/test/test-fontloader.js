@@ -22,19 +22,19 @@ import * as sinon from 'sinon';
 adopt(window);
 
 /** @private @const {string} */
-const FONT_FACE_ = "\
-  @font-face {\
-    font-family: 'Comic AMP';\
-    src: url(/base/examples/fonts/ComicAMP.ttf) format('truetype');\
-  }\
-";
+const FONT_FACE_ = `
+  @font-face {
+    font-family: 'Comic AMP';
+    src: url(/examples/fonts/ComicAMP.ttf) format('truetype');
+  }
+`;
 
-const CSS_RULES_ = "\
-  .comic-amp-font-loaded {\
-    font-family: 'Comic AMP', serif, sans-serif;\
-    color: #0f0;\
-  }\
-";
+const CSS_RULES_ = `
+  .comic-amp-font-loaded {
+    font-family: 'Comic AMP', serif, sans-serif;
+    color: #0f0;
+  }
+`;
 
 /** @private @const {!FontConfig} */
 const FONT_CONFIG = {
@@ -42,7 +42,7 @@ const FONT_CONFIG = {
   variant: 'normal',
   weight: '400',
   size: 'medium',
-  family: 'Comic AMP'
+  family: 'Comic AMP',
 };
 
 
@@ -52,47 +52,31 @@ const FAILURE_FONT_CONFIG = {
   variant: 'normal',
   weight: '400',
   size: 'medium',
-  family: 'Comic BLAH'
+  family: 'Comic BLAH',
 };
 
 describe('FontLoader', () => {
 
   let sandbox;
-  let clock;
   let fontloader;
   let setupFontCheckSpy;
   let setupFontLoadSpy;
-  let setupCanUseNativeApisSpy;
   let setupLoadWithPolyfillSpy;
   let setupDisposeSpy;
+  let setupCreateElementsSpy;
 
   beforeEach(() => {
     sandbox = sinon.sandbox.create();
-    clock = sinon.useFakeTimers();
     setupLoadWithPolyfillSpy =
-        sinon.spy(FontLoader.prototype, 'loadWithPolyfill_');
+        sandbox.spy(FontLoader.prototype, 'loadWithPolyfill_');
     setupCreateElementsSpy =
-        sinon.spy(FontLoader.prototype, 'createElements_');
-    setupDisposeSpy = sinon.spy(FontLoader.prototype, 'dispose_');
+        sandbox.spy(FontLoader.prototype, 'createElements_');
+    setupDisposeSpy = sandbox.spy(FontLoader.prototype, 'dispose_');
   });
 
   afterEach(() => {
-    restoreSpy(setupDisposeSpy);
-    restoreSpy(setupCreateElementsSpy);
-    restoreSpy(setupLoadWithPolyfillSpy);
-    restoreSpy(setupCanUseNativeApisSpy);
-    restoreSpy(setupFontCheckSpy);
-    restoreSpy(setupFontLoadSpy);
-    restoreSpy(clock);
-    restoreSpy(sandbox);
-    fontloader = null;
+    sandbox.restore();
   });
-
-  function restoreSpy(spy) {
-    if (spy) {
-      spy.restore();
-    }
-  }
 
   function getIframe() {
     return createIframePromise().then(iframe => {
@@ -101,10 +85,10 @@ describe('FontLoader', () => {
       iframe.doc.head.appendChild(style);
       const textEl = iframe.doc.createElement('p');
       textEl.textContent =
-          "Neque porro quisquam est qui dolorem ipsum quia dolor";
+          'Neque porro quisquam est qui dolorem ipsum quia dolor';
       iframe.doc.body.appendChild(textEl);
-      setupFontCheckSpy = sinon.spy(iframe.doc.fonts, 'check');
-      setupFontLoadSpy = sinon.spy(iframe.doc.fonts, 'load');
+      setupFontCheckSpy = sandbox./*OK*/spy(iframe.doc.fonts, 'check');
+      setupFontLoadSpy = sandbox./*OK*/spy(iframe.doc.fonts, 'load');
       fontloader = new FontLoader(iframe.win);
       return Promise.resolve(iframe);
     });
@@ -125,8 +109,7 @@ describe('FontLoader', () => {
 
   it('should check and load font via polyfill', () => {
     return getIframe().then(iframe => {
-      setupCanUseNativeApisSpy =
-          sinon.stub(FontLoader.prototype, 'canUseNativeApis_').returns(false);
+      sandbox.stub(FontLoader.prototype, 'canUseNativeApis_').returns(false);
       fontloader.load(FONT_CONFIG, 3000).then(() => {
         iframe.doc.documentElement.classList.add('comic-amp-font-loaded');
         expect(setupFontCheckSpy.callCount).to.equal(0);
@@ -141,7 +124,7 @@ describe('FontLoader', () => {
   });
 
   it('should error when font is not available', () => {
-    return getIframe().then(iframe => {
+    return getIframe().then(unusedIframe => {
       fontloader.load(FAILURE_FONT_CONFIG, 3000).then(() => {
         assert.fail('Font loaded when it should have failed.');
       }).catch(() => {
@@ -154,8 +137,7 @@ describe('FontLoader', () => {
 
   it('should error when font is not available via polyfill', () => {
     return getIframe().then(iframe => {
-      setupCanUseNativeApisSpy =
-          sinon.stub(FontLoader.prototype, 'canUseNativeApis_').returns(false);
+      sandbox.stub(FontLoader.prototype, 'canUseNativeApis_').returns(false);
       fontloader.load(FONT_CONFIG, 3000).then(() => {
         iframe.doc.documentElement.classList.add('comic-amp-font-loaded');
         assert.fail('Font loaded when it should have failed.');
@@ -171,16 +153,19 @@ describe('FontLoader', () => {
 
   it('should check if elements are being created when using polyfill', () => {
     return getIframe().then(iframe => {
-      setupCanUseNativeApisSpy =
-          sinon.stub(FontLoader.prototype, 'canUseNativeApis_').returns(false);
-      setupDisposeSpy.restore();
+      sandbox.stub(FontLoader.prototype, 'canUseNativeApis_').returns(false);
+      setupDisposeSpy/*OK*/.restore();
       setupDisposeSpy =
-          sinon.stub(FontLoader.prototype, 'dispose_').returns(undefined);
+          sandbox.stub(FontLoader.prototype, 'dispose_').returns(undefined);
       const initialElementsCount = iframe.doc.getElementsByTagName('*').length;
       fontloader.load(FONT_CONFIG, 3000).then(() => {
         iframe.doc.documentElement.classList.add('comic-amp-font-loaded');
         const finalElementsCount = iframe.doc.getElementsByTagName('*').length;
         expect(initialElementsCount).to.be.below(finalElementsCount);
+        const createdContainer = iframe.doc.querySelectorAll('body > div')[1];
+        expect(createdContainer.fontStyle).to.equal('normal');
+        expect(createdContainer.fontWeight).to.equal('400');
+        expect(createdContainer.fontVariant).to.equal('normal');
       }).catch(() => {
         assert.fail('Font load failed');
       });
@@ -189,8 +174,7 @@ describe('FontLoader', () => {
 
   it('should check if elements created using the polyfill are disposed', () => {
     return getIframe().then(iframe => {
-      setupCanUseNativeApisSpy =
-          sinon.stub(FontLoader.prototype, 'canUseNativeApis_').returns(false);
+      sandbox.stub(FontLoader.prototype, 'canUseNativeApis_').returns(false);
       const initialElementsCount = iframe.doc.getElementsByTagName('*').length;
       fontloader.load(FONT_CONFIG, 3000).then(() => {
         iframe.doc.documentElement.classList.add('comic-amp-font-loaded');
@@ -207,16 +191,22 @@ describe('FontLoader', () => {
       const defaultDiv = iframe.doc.createElement('div');
       defaultDiv.style.fontFamily = 'serif';
       defaultDiv.style.position = 'absolute';
-      defaultDiv.textContent = "HelloWSSIENd2939Qq";
+      defaultDiv.textContent = 'HelloWSSIENd2939Qq';
       const fontDiv = iframe.doc.createElement('div');
       fontDiv.style.fontFamily = 'Comic AMP';
       fontDiv.style.position = 'absolute';
-      fontDiv.textContent = "HelloWSSIENd2939Qq";
+      fontDiv.textContent = 'HelloWSSIENd2939Qq';
       iframe.doc.body.appendChild(defaultDiv);
       iframe.doc.body.appendChild(fontDiv);
       fontloader.defaultFontElements_ = [defaultDiv];
       fontloader.customFontElement_ = fontDiv;
-      expect(fontloader.compareMeasurements_()).to.be.true;
+      return fontloader.load(FONT_CONFIG, 3000).then(() => {
+        fontloader.defaultFontElements_ = [defaultDiv];
+        fontloader.customFontElement_ = fontDiv;
+        expect(fontloader.compareMeasurements_()).to.be.true;
+      }).catch(() => {
+        assert.fail('Font load failed');
+      });
     });
   });
 });

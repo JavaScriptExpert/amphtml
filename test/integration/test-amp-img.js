@@ -14,10 +14,14 @@
  * limitations under the License.
  */
 
-import {createFixtureIframe, expectBodyToBecomeVisible} from
-    '../../testing/iframe.js';
+import {
+  createFixtureIframe,
+  expectBodyToBecomeVisible,
+} from '../../testing/iframe.js';
 
-describe('Rendering of amp-img', () => {
+describe.configure().retryOnSaucelabs().run('Rendering of amp-img', function() {
+  this.timeout(5000);
+
   let fixture;
   beforeEach(() => {
     return createFixtureIframe('test/fixtures/images.html', 500).then(f => {
@@ -25,7 +29,7 @@ describe('Rendering of amp-img', () => {
     });
   });
 
-  it('should show the body', () => {
+  it('should show the body in image test', () => {
     return expectBodyToBecomeVisible(fixture.win);
   });
 
